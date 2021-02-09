@@ -14,6 +14,22 @@ namespace ni_compiler {
 			this.next = null;
 		}
 	}
+
+	public static class LLExt {
+		public static LL<T> Add<T>(this LL<T> list, T val) {
+			return new LL<T>(val, list);
+		}
+		public static R FoldR<T, R>(this LL<T> list, Func<R, T, R> reducer, R value) {
+			if (list == null) { return value; }
+			return FoldR(list.next, reducer, reducer(value, list.val)); 
+		}
+		public static R FoldL<T, R>(this LL<T> list, Func<R, T, R> reducer, R value) {
+			if (list == null) { return value; }
+			R next = FoldL(list.next, reducer, value);
+			return reducer(next, list.val);
+		}
+	}
+
 	public class Env<T> {
 		public LL<(string, T)> values;
 		public Env() {}
@@ -40,18 +56,18 @@ namespace ni_compiler {
 		public Dictionary<string, Node> nodeMap;
 
 		/// <summary> Ordered List of children </summary>
-		public List<Node> nodeList;
+		public List<Node> nodes;
 		/// <summary> Ordered list of data </summary>
-		public List<string> dataList;
+		public List<string> datas;
 
 		/// <summary> Tokens that compose this node for sourcemapping information. </summary>
 		public List<Token> tokens;
 
 		/// <summary> Number of entries in the ordered data 'list' </summary>
-		public int DataListed { get { return dataList?.Count ?? 0; } }
+		public int DataListed { get { return datas?.Count ?? 0; } }
 
 		/// <summary> Number of entries in the ordered children 'list' </summary>
-		public int NodesListed { get { return nodeList?.Count ?? 0; } }
+		public int NodesListed { get { return nodes?.Count ?? 0; } }
 
 		/// <summary> Number of data values mapped </summary>
 		public int DataMapped { get { return dataMap?.Count ?? 0; } }
@@ -68,6 +84,11 @@ namespace ni_compiler {
 		public int line { get { return tokens != null ? tokens[0].line : -1; } }
 		/// <summary> Get column of first line this node is on, or -1 if no tokens are recorded. </summary>
 		public int col { get { return tokens != null ? tokens[0].col : -1; } }
+
+		/// <summary> Does this node have source position information? </summary>
+		public bool hasSrcLineCol { get { return line != -1 && col != -1; } }
+		/// <summary> Get line/col information </summary>
+		public string srcLineCol { get { return $"From [Line {line}, Col {col}] - [Line {lastLine}, Col {lastCol}]"; } }
 
 		/// <summary> Gets the last line this node is on, or -1 if no tokens are recorded. </summary>
 		public int lastLine {
@@ -105,8 +126,8 @@ namespace ni_compiler {
 		public Node() {
 			dataMap = null;
 			nodeMap = null;
-			nodeList = null;
-			dataList = null;
+			nodes = null;
+			datas = null;
 
 			type = UNTYPED;
 		}
@@ -116,8 +137,8 @@ namespace ni_compiler {
 		public Node(int type) {
 			nodeMap = null;
 			dataMap = null;
-			nodeList = null;
-			dataList = null;
+			nodes = null;
+			datas = null;
 
 			this.type = type;
 		}
@@ -139,8 +160,8 @@ namespace ni_compiler {
 		/// <summary> Inserts the <paramref name="node"/> into the 'list' at index <see cref="NodesListed"/> and returns the listed node </summary>
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public Node List(Node node) {
-			if (nodeList == null) { nodeList = new List<Node>(); }
-			if (node != null) { nodeList.Add(node); }
+			if (nodes == null) { nodes = new List<Node>(); }
+			if (node != null) { nodes.Add(node); }
 			return node;
 		}
 
@@ -162,8 +183,8 @@ namespace ni_compiler {
 		/// <summary> Adds the given <paramref name="val"/> into the 'list' of data at index <see cref="DataListed"/> </summary>
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		public void List(string val) {
-			if (dataList == null) { dataList = new List<string>(); }
-			if (val != null) { dataList.Add(val); }
+			if (datas == null) { datas = new List<string>(); }
+			if (val != null) { datas.Add(val); }
 			//if (val != null) { dataMap[""+(dataListSize++)] = val; }
 		}
 
@@ -179,8 +200,8 @@ namespace ni_compiler {
 		/// <param name="index"> Index of child node to grab </param>
 		/// <returns> Child node at <paramref name="index"/>, or null if there is none. </returns>
 		public Node Child(int index) {
-			if (nodeList == null) { return null; }
-			if (index < nodeList.Count) { return nodeList[index]; }
+			if (nodes == null) { return null; }
+			if (index < nodes.Count) { return nodes[index]; }
 			return null;
 		}
 
@@ -197,8 +218,8 @@ namespace ni_compiler {
 		/// <param name="index"> Index of data value to grab </param>
 		/// <returns> Data value at <paramref name="index"/>, or null if there is none. </returns>
 		public string Data(int index) {
-			if (dataList == null) { return null; }
-			if (index < dataList.Count) { return dataList[index]; }
+			if (datas == null) { return null; }
+			if (index < datas.Count) { return datas[index]; }
 			return null;
 		}
 
@@ -225,7 +246,7 @@ namespace ni_compiler {
 			string ident2 = ident + indentString;
 			string ident3 = ident2 + indentString;
 
-			str.Append($"\n{ident}Node {type} From [Line {line}, Col {col}] - [Line {lastLine}, Col {lastCol}]");
+			str.Append($"\n{ident}Node {type} {(hasSrcLineCol ? srcLineCol : "")}");
 
 			if (dataMap != null) {
 				str.Append($"\n{ident2}DataMap:");
@@ -234,12 +255,12 @@ namespace ni_compiler {
 				}
 			}
 
-			if (dataList != null) {
+			if (datas != null) {
 				str.Append($"\n{ident2}DataList: [");
 
-				for (int i = 0; i < dataList.Count; i++) {
+				for (int i = 0; i < datas.Count; i++) {
 					str.Append(i > 0 ? ", " : "");
-					str.Append(dataList[i]);
+					str.Append(datas[i]);
 				}
 
 				str.Append("]");
@@ -254,11 +275,58 @@ namespace ni_compiler {
 
 			}
 
-			if (nodeList != null) {
+			if (nodes != null) {
 				str.Append($"\n{ident2} NodeList:");
 
-				for (int i = 0; i < nodeList.Count; i++) {
-					str.Append($"\n{ident3}{i}: {nodeList[i].ToString(indent + 1, indentString)}");
+				for (int i = 0; i < nodes.Count; i++) {
+					str.Append($"\n{ident3}{i}: {nodes[i].ToString(indent + 1, indentString)}");
+				}
+			}
+
+			return str.ToString();
+		}
+
+		public string ToString<T>(int indent = 0, string indentString = "  ") where T : Enum{
+			StringBuilder str = new StringBuilder();
+			string ident = "";
+			for (int i = 0; i < indent; i++) { ident += indentString; }
+			string ident2 = ident + indentString;
+			string ident3 = ident2 + indentString;
+
+			str.Append($"\n{ident}Node {Enum<T>.names[type]} {(hasSrcLineCol ? srcLineCol : "")}");
+
+			if (dataMap != null) {
+				str.Append($"\n{ident2}DataMap:");
+				foreach (var pair in dataMap) {
+					str.Append($"\n{ident3}{pair.Key}: {pair.Value}");
+				}
+			}
+
+			if (datas != null) {
+				str.Append($"\n{ident2}DataList: [");
+
+				for (int i = 0; i < datas.Count; i++) {
+					str.Append(i > 0 ? ", " : "");
+					str.Append(datas[i]);
+				}
+
+				str.Append("]");
+			}
+
+			if (nodeMap != null) {
+				str.Append($"\n{ident2}NodeMap: ");
+
+				foreach (var pair in nodeMap) {
+					str.Append($"\n{ident3}{pair.Key}: {pair.Value.ToString<T>(indent + 1, indentString)}");
+				}
+
+			}
+
+			if (nodes != null) {
+				str.Append($"\n{ident2} NodeList:");
+
+				for (int i = 0; i < nodes.Count; i++) {
+					str.Append($"\n{ident3}{i}: {nodes[i].ToString<T>(indent + 1, indentString)}");
 				}
 			}
 
