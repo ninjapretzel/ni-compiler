@@ -41,7 +41,8 @@ namespace ni_compiler {
 				), 
 				Add(Var("x"), 
 					Add(Int(2), Int(3))
-				));
+				)
+			);
 			Console.WriteLine($"Original program: {program.ToString<N1>()}");
 
 			var result1 = InterpN1(program, new Env<int>());
@@ -120,12 +121,12 @@ namespace ni_compiler {
 				case N1.Read: 
 					return (cnt, n);
 				case N1.Negate:{
-					(int cnt2, Node body, LL<(string, Node)> bindings) = ReduceAtm(cnt, n.nodes[0], null);
+					(int cnt2, Node body, var bindings) = ReduceAtm(cnt, n.nodes[0], null);
 					return ( cnt2, Negate(bindings.FoldL(Reduce, body)) );
 				}
 				case N1.Add: {
-					(int cnta, Node bodya, LL<(string, Node)> binda) = ReduceAtm(cnt, n.nodes[0], null);
-					(int cntb, Node bodyb, LL<(string, Node)> bindb) = ReduceAtm(cnta, n.nodes[1], null);
+					(int cnta, Node bodya, var binda) = ReduceAtm(cnt, n.nodes[0], null);
+					(int cntb, Node bodyb, var bindb) = ReduceAtm(cnta, n.nodes[1], null);
 					return ( cntb, Add( binda.FoldL(Reduce, bodya), bindb.FoldL(Reduce, bodyb)) );
 				}
 				case N1.Let: {
