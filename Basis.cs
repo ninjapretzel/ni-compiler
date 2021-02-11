@@ -77,11 +77,13 @@ namespace ni_compiler {
 		private string _toString;
 		/// <inheritdoc />
 		public override string ToString() {
-			if (_toString != null) { return _toString; }
+			if (_toString != null) { return $"{{{_toString}\n}}"; }
 			if (old == null || list == null) { return (_toString = ""); }
 			(string name, T val) = list.data;
-			string elem = $"\n\t{name}: {val}";
-			return (_toString = elem + old.ToString());
+			string elem = $"\n\t{name}: {val},";
+			old.ToString();
+			_toString = elem + old._toString;
+			return $"{{{_toString}\n}}";
 		}
 		/// <summary> Extend the given environment with a new symbol/value pair </summary>
 		/// <param name="sym"> Symbol to extend with </param>
@@ -99,7 +101,7 @@ namespace ni_compiler {
 				if (name == sym) { return val; }
 				trace = trace.next;
 			}
-			throw new Exception($"No variable '{sym}' found in env {{{ToString()}\n}}");
+			throw new Exception($"No variable '{sym}' found in env {ToString()}");
 		}
 
 	}
