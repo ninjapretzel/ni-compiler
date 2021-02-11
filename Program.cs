@@ -7,6 +7,7 @@ namespace ni_compiler {
 	public class Program {
 		public static void Main(string[] args) {
 			N1Lang.Run();
+			C0Lang.Run();
 		}
 	}
 
@@ -62,7 +63,50 @@ namespace ni_compiler {
 			return n;
 		}
 
+		public static (int, Env<int>) Interp(Node n, Env<int> env) {
+			C0 type = (C0) n.type;
+			switch (type) {
+				case C0.Int: return (int.Parse(n.datas[0]), env);
+				case C0.Var: return (env.Lookup(n.datas[0]), env);
+				case C0.Atm: return Interp(n.nodes[0], env);
+				case C0.Sub: { (int v, var env2) = Interp(n.nodes[0], env); return (-v, env2); }
+				case C0.Add: {
+					(int a, var env2) = Interp(n.nodes[0], env);
+					(int b, var env3) = Interp(n.nodes[1], env2);
+					return (a+b, env3);
+				}
+				case C0.Assign: {
+					(int v, var env2) = Interp(n.nodes[0], env);
+					return (v, env2.Extend(n.datas[0], v));
+				}
+				case C0.Return: { return Interp(n.nodes[0], env); }
+				case C0.Seq: {
+					(int v, var env2) = Interp(n.nodes[0], env);
+					return Interp(n.nodes[1], env2);
+				}
+				case C0.Read: {
+					Console.Write($"Enter Value: ");
+					int val = int.Parse(Console.ReadLine());
+					Console.WriteLine();
+					return (val, env);
+				}
+			}
+			throw new Exception($"Unknown C0 type {type}");
+		}
 			
+		public static void Run() {
+			Node program = 
+				Seq( Assign("x", Int(5) ),
+				Seq( Assign("nx", Sub(Var("x"))),
+				Return( Add( Var("nx"), Int(120)) ) 
+			));
+			
+
+			Console.WriteLine($"Interpreting C0 program {program.ToString<C0>()}");
+			(int result, Env<int> final) = Interp(program, new Env<int>());
+
+			Console.WriteLine($"Got result {result} / Env<int> {final}");
+		}
 
 	}
 
@@ -102,25 +146,23 @@ namespace ni_compiler {
 			return n;
 		}
 
-		public static int InterpN1(Node n, Env<int> env) {
+		public static int Interp(Node n, Env<int> env) {
 			if (n == null) { throw new Exception($"No node to execute"); }
 			N1 type = (N1)n.type;
-			if (type == N1.Add) {
-				return InterpN1(n.nodes[0], env) + InterpN1(n.nodes[1], env);
-			} else if (type == N1.Negate) {
-				return -InterpN1(n.nodes[0], env);
-			} else if (type == N1.Int) {
-				return int.Parse(n.datas[0]);
-			} else if (type == N1.Read) {
-				Console.Write($"Enter Value: ");
-				int val = int.Parse(Console.ReadLine());
-				Console.WriteLine();
-				return val;
-			} else if (type == N1.Var) {
-				return env.Lookup(n.datas[0]);
-			} else if (type == N1.Let) {
-				return InterpN1(n.nodes[1], env.Extend(n.datas[0], InterpN1(n.nodes[0], env)));
-			} else { throw new Exception($"Unknown Type {type}"); }
+			switch (type) {
+				case N1.Int: return int.Parse(n.datas[0]);
+				case N1.Add: return Interp(n.nodes[0], env) + Interp(n.nodes[1], env);
+				case N1.Negate: return -Interp(n.nodes[0], env);
+				case N1.Var: return env.Lookup(n.datas[0]);
+				case N1.Let: return Interp(n.nodes[1], env.Extend(n.datas[0], Interp(n.nodes[0], env)));
+				case N1.Read: {
+					Console.Write($"Enter Value: ");
+					int val = int.Parse(Console.ReadLine());
+					Console.WriteLine();
+					return val;
+				}
+			}
+			throw new Exception($"Unknown N1 Type {type}");
 		}
 
 		public static void Run() {
@@ -139,30 +181,30 @@ namespace ni_compiler {
 
 			Console.WriteLine($"Original program: {program.ToString<N1>()}");
 
-			var result1 = InterpN1(program, new Env<int>());
+			var result1 = Interp(program, new Env<int>());
 			Console.WriteLine($"\n\nResult: {result1}");
 
 			Node reduced = ReduceComplexOperators(program);
 			Console.WriteLine($"Reduced program: {reduced.ToString<N1>()}");
 
-			var result2 = InterpN1(reduced, new Env<int>());
+			var result2 = Interp(reduced, new Env<int>());
 			Console.WriteLine($"\n\nResult: {result2}");
 
 			Node pevaled = PartialEvaluate(program); 
 			Console.WriteLine($"Partially Evaluated: {pevaled.ToString<N1>()}");
 
-			var result3 = InterpN1(pevaled, new Env<int>());
+			var result3 = Interp(pevaled, new Env<int>());
 			Console.WriteLine($"\n\nResult: {result3}");
 
 			Node pevaledAndReduced = ReduceComplexOperators(pevaled);
 			Console.WriteLine($"Partially Evaluated and Reduced: {pevaledAndReduced.ToString<N1>()}");
 
-			var result4 = InterpN1(pevaledAndReduced, new Env<int>());
+			var result4 = Interp(pevaledAndReduced, new Env<int>());
 			Console.WriteLine($"\n\nResult: {result4}");
 
 			Node reducedAndUniqued = UniquifyNames(reduced);
 			Console.WriteLine($"Reduced and Uniquified: {reducedAndUniqued}");
-			var result5 = InterpN1(reducedAndUniqued, new Env<int>());
+			var result5 = Interp(reducedAndUniqued, new Env<int>());
 			Console.WriteLine($"\n\nResult: {result5}");
 
 
