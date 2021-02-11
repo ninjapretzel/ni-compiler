@@ -6,44 +6,100 @@ using System.Text;
 
 namespace ni_compiler {
 
+	/// <summary> Basic singly linked list node type. </summary>
+	/// <typeparam name="T"> Generic content type </typeparam>
 	public class LL<T> {
-		public T val;
+		/// <summary> Current data </summary>
+		public T data;
+		/// <summary> Link to next node </summary>
 		public LL<T> next;
-		public LL(T val, LL<T> next = null) {
-			this.val = val;
-			this.next = null;
+		/// <summary> Construct a new node with the given data/next link </summary>
+		/// <param name="data"> data item to store </param>
+		/// <param name="next"> next link or null </param>
+		public LL(T data, LL<T> next = null) {
+			this.data = data;
+			this.next = next;
 		}
 	}
-
+	/// <summary> Extension methods for <see cref="LL{T}"/> so that calling them on null is valid. </summary>
 	public static class LLExt {
+		/// <summary> Add an item to a list, returning the new list node </summary>
+		/// <typeparam name="T"> Generic content type </typeparam>
+		/// <param name="list"> List to add to </param>
+		/// <param name="val"> item to add </param>
+		/// <returns> newly constructed list </returns>
 		public static LL<T> Add<T>(this LL<T> list, T val) {
 			return new LL<T>(val, list);
 		}
+		/// <summary> Fold a list from "Right to left" </summary>
+		/// <typeparam name="T"> Generic content type </typeparam>
+		/// <typeparam name="R"> Generic result type </typeparam>
+		/// <param name="list"> List to reduce </param>
+		/// <param name="reducer"> Function to reduce list content </param>
+		/// <param name="value"> Initial accumulator value </param>
+		/// <returns> Final reduction result </returns>
 		public static R FoldR<T, R>(this LL<T> list, Func<R, T, R> reducer, R value) {
 			if (list == null) { return value; }
-			return FoldR(list.next, reducer, reducer(value, list.val)); 
+			return FoldR(list.next, reducer, reducer(value, list.data));
 		}
+		/// <summary> Fold a list from "Left to right" </summary>
+		/// <typeparam name="T"> Generic content type </typeparam>
+		/// <typeparam name="R"> Generic result type </typeparam>
+		/// <param name="list"> List to reduce </param>
+		/// <param name="reducer"> Function to reduce list content </param>
+		/// <param name="value"> Initial accumulator value </param>
+		/// <returns> Final reduction result </returns>
 		public static R FoldL<T, R>(this LL<T> list, Func<R, T, R> reducer, R value) {
 			if (list == null) { return value; }
 			R next = FoldL(list.next, reducer, value);
-			return reducer(next, list.val);
+			return reducer(next, list.data);
 		}
 	}
 
+	/// <summary> Environment type, done for consistancy with functional version. </summary>
+	/// <typeparam name="T"> Generic content type </typeparam>
 	public class Env<T> {
-		public LL<(string, T)> values;
+		/// <summary> List of content </summary>
+		public LL<(string, T)> list { get; private set; }
+		/// <summary> Link to old environment </summary>
+		public Env<T> old { get; private set; }
+		/// <summary> Empty constructor </summary>
 		public Env() {}
+		/// <summary> Extension constructor </summary>
+		/// <param name="old"> Old list to extend </param>
+		/// <param name="sym"> new symbol to bind </param>
+		/// <param name="val"> new value to bind </param>
 		public Env(Env<T> old, string sym, T val) {
-			values = new LL<(string, T)>((sym, val), old?.values);
+			this.old = old;
+			list = new LL<(string, T)>((sym, val), old?.list);
 		}
+		/// <summary> Inner field for caching result of <see cref="ToString"/> </summary>
+		private string _toString;
+		/// <inheritdoc />
+		public override string ToString() {
+			if (_toString != null) { return _toString; }
+			if (old == null || list == null) { return (_toString = ""); }
+			(string name, T val) = list.data;
+			string elem = $"\n\t{name}: {val}";
+			return (_toString = elem + old.ToString());
+		}
+		/// <summary> Extend the given environment with a new symbol/value pair </summary>
+		/// <param name="sym"> Symbol to extend with </param>
+		/// <param name="val"> Value to bind to symbol </param>
+		/// <returns> Newly constructed environment with binding added. </returns>
 		public Env<T> Extend(string sym, T val) { return new Env<T>(this, sym, val); }
+		/// <summary> Lookup the given symbol in the given environment. </summary>
+		/// <param name="sym"> Symbol to look up. </param>
+		/// <returns> Found value, or throws an exception if it is not found. </returns>
 		public T Lookup(string sym) {
-			var trace = values;
+			int i = 0;
+			var trace = list;
 			while (trace != null) {
-				if (trace.val.Item1 == sym) { return trace.val.Item2; }
+				(string name, T val) = trace.data;
+				if (name == sym) { return val; }
 				trace = trace.next;
 			}
-			throw new Exception($"No variable '{sym}' found.");
+			throw new Exception($"No variable '{sym}' found in env {{{ToString()}\n}}");
 		}
 
 	}
@@ -292,8 +348,8 @@ namespace ni_compiler {
 			for (int i = 0; i < indent; i++) { ident += indentString; }
 			string ident2 = ident + indentString;
 			string ident3 = ident2 + indentString;
-
-			str.Append($"\n{ident}Node {Enum<T>.names[type]} {(hasSrcLineCol ? srcLineCol : "")}");
+			string kind = Enum<T>.names[type];
+			str.Append($"\n{ident}Node {kind} {(hasSrcLineCol ? srcLineCol : "")}");
 
 			if (dataMap != null) {
 				str.Append($"\n{ident2}DataMap:");
@@ -317,7 +373,7 @@ namespace ni_compiler {
 				str.Append($"\n{ident2}NodeMap: ");
 
 				foreach (var pair in nodeMap) {
-					str.Append($"\n{ident3}{pair.Key}: {pair.Value.ToString<T>(indent + 1, indentString)}");
+					str.Append($"\n{ident3}{kind} @ {pair.Key}: {pair.Value.ToString<T>(indent + 1, indentString)}");
 				}
 
 			}
@@ -326,7 +382,7 @@ namespace ni_compiler {
 				str.Append($"\n{ident2} NodeList:");
 
 				for (int i = 0; i < nodes.Count; i++) {
-					str.Append($"\n{ident3}{i}: {nodes[i].ToString<T>(indent + 1, indentString)}");
+					str.Append($"\n{ident3}{kind} # {i}: {nodes[i].ToString<T>(indent + 1, indentString)}");
 				}
 			}
 
