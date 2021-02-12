@@ -1,17 +1,85 @@
-﻿using System;
+﻿using BakaTest;
+using Ex;
+using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Runtime.CompilerServices;
+using System.Threading.Tasks;
 
 namespace ni_compiler {
 
 	public class Program {
+
+		public static string SourceFileDirectory([CallerFilePath] string callerPath = "[NO PATH]") {
+			callerPath = ForwardSlashPath(callerPath);
+			return callerPath.Substring(0, callerPath.LastIndexOf('/'));
+		}
+
+		public static string UncleanSourceFileDirectory([CallerFilePath] string callerPath = "[NO PATH]") {
+			return callerPath.Substring(0, callerPath.Replace('\\', '/').LastIndexOf('/'));
+		}
+
+		public static string TopSourceFileDirectory() { return SourceFileDirectory(); }
+
+		/// <summary> Convert a file or folder path to only contain forward slashes '/' instead of backslashes '\'. </summary>
+		/// <param name="path"> Path to convert </param>
+		/// <returns> <paramref name="path"/> with all '\' characters replaced with '/' </returns>
+		private static string ForwardSlashPath(string path) {
+			string s = path.Replace('\\', '/');
+			return s;
+		}
+
 		public static void Main(string[] args) {
-			N1Lang.Run();
-			C0Lang.Run();
+			SetupLogger();
+
+			BakaTestHook.logger = (str) => { Log.Info(str, "Tests"); };
+			BakaTestHook.RunTestsSync();
+		}
+
+		private static void SetupLogger() {
+			Log.ignorePath = UncleanSourceFileDirectory();
+			Log.fromPath = "Harness";
+			Log.defaultTag = "Ex";
+			LogLevel target = LogLevel.Info;
+
+			Log.logHandler += (info) => {
+				// Console.WriteLine($"{info.tag}: {info.message}");
+				if (info.level <= target) {
+					//Console.WriteLine($"\n{info.tag}: {info.message}\n");
+					Pretty.Print($"\n{info.tag}: {info.message}\n");
+				}
+			};
+
+			// Todo: Change logfile location when deployed
+			// Log ALL messages to file.
+			string logfolder = $"{SourceFileDirectory()}/logs";
+			if (!Directory.Exists(logfolder)) { Directory.CreateDirectory(logfolder); }
+			string logfile = $"{logfolder}/{DateTime.UtcNow.UnixTimestamp()}.log";
+			Log.logHandler += (info) => {
+				File.AppendAllText(logfile, $"\n{info.tag}: {info.message}\n");
+			};
+
 		}
 	}
 
 	public class C0Lang {
+		public class _Tests {
+			public static void TestWhatever() {
+				Node program =
+					Seq(Assign("x", Int(5)),
+					Seq(Assign("nx", Sub(Var("x"))),
+					Return(Add(Var("nx"), Int(120)))
+				));
+
+
+				// Console.WriteLine($"Interpreting C0 program {program.ToString<C0>()}");
+				(int result, Env<int> final) = Interp(program, new Env<int>());
+
+				result.ShouldBe(5);
+				//Console.WriteLine($"Got result {result} / Env<int> {final}");
+
+			}
+		}
 		public enum C0 : int {
 			Int, Var, 
 			Atm, Read, Sub, Add,
@@ -93,20 +161,7 @@ namespace ni_compiler {
 			}
 			throw new Exception($"Unknown C0 type {type}");
 		}
-			
-		public static void Run() {
-			Node program = 
-				Seq( Assign("x", Int(5) ),
-				Seq( Assign("nx", Sub(Var("x"))),
-				Return( Add( Var("nx"), Int(120)) ) 
-			));
-			
-
-			Console.WriteLine($"Interpreting C0 program {program.ToString<C0>()}");
-			(int result, Env<int> final) = Interp(program, new Env<int>());
-
-			Console.WriteLine($"Got result {result} / Env<int> {final}");
-		}
+		
 
 	}
 
@@ -166,9 +221,6 @@ namespace ni_compiler {
 		}
 
 		public static void Run() {
-			//Node program = Let("x", Int(5), Add(Negate(Var("x")), Read()));
-			//int result = InterpN1(program, new Env<int>());
-			//Console.WriteLine($"Program Result: {result}");
 			Node program = Let("x", 
 				Negate(
 					Add(Int(10), Int(30))
