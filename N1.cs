@@ -1,4 +1,6 @@
-﻿using System;
+﻿using BakaTest;
+using Ex;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -61,58 +63,6 @@ namespace ni_compiler {
 			throw new Exception($"Unknown N1 Type {type}");
 		}
 
-		public static void Run() {
-			Node program = Let("x",
-				Negate(
-					Add(Int(10), Int(30))
-				),
-				Add(Var("x"),
-					Add(Int(2), Int(3))
-				)
-			);
-
-
-			Console.WriteLine($"Original program: {program.ToString<N1>()}");
-
-			var result1 = Interp(program, new Env<int>());
-			Console.WriteLine($"\n\nResult: {result1}");
-
-			Node reduced = ReduceComplexOperators(program);
-			Console.WriteLine($"Reduced program: {reduced.ToString<N1>()}");
-
-			var result2 = Interp(reduced, new Env<int>());
-			Console.WriteLine($"\n\nResult: {result2}");
-
-			Node pevaled = PartialEvaluate(program);
-			Console.WriteLine($"Partially Evaluated: {pevaled.ToString<N1>()}");
-
-			var result3 = Interp(pevaled, new Env<int>());
-			Console.WriteLine($"\n\nResult: {result3}");
-
-			Node pevaledAndReduced = ReduceComplexOperators(pevaled);
-			Console.WriteLine($"Partially Evaluated and Reduced: {pevaledAndReduced.ToString<N1>()}");
-
-			var result4 = Interp(pevaledAndReduced, new Env<int>());
-			Console.WriteLine($"\n\nResult: {result4}");
-
-			Node reducedAndUniqued = UniquifyNames(reduced);
-			Console.WriteLine($"Reduced and Uniquified: {reducedAndUniqued}");
-			var result5 = Interp(reducedAndUniqued, new Env<int>());
-			Console.WriteLine($"\n\nResult: {result5}");
-
-
-			Node pg4 = Add(
-					Int(5),
-					Let("x", Int(6),
-						Let("y", Int(6),
-							Add(Var("x"), Var("y"))
-						)
-					)
-				);
-			var pg4reduced = ReduceComplexOperators(pg4);
-			Console.WriteLine($"Reduced pg4: {pg4reduced.ToString<N1>()}");
-		}
-
 		public static Node PartialEvaluate(Node n) {
 			switch ((N1)n.type) {
 				case N1.Int:
@@ -145,7 +95,7 @@ namespace ni_compiler {
 			throw new Exception($"Unknown N1 node type {n.type}");
 		}
 
-		public static Node ReduceComplexOperators(Node tree) {
+		public static Node Reduce(Node tree) {
 			(int k, Node res) = ReduceExp(0, tree);
 			return res;
 		}
@@ -160,8 +110,8 @@ namespace ni_compiler {
 				case N1.Read:
 					return (cnt, n);
 				case N1.Negate: {
-						(int cnt2, Node body, var bindings) = ReduceAtm(cnt, n.nodes[0], null);
-						return (cnt2, Negate(bindings.FoldL(Reduce, body)));
+						(int cnt2, Node body, var bind) = ReduceAtm(cnt, n.nodes[0], null);
+						return (cnt2, bind.FoldL(Reduce, Negate(body)));
 					}
 				case N1.Add: {
 						(int cnt2, Node bodya, var binda) = ReduceAtm(cnt, n.nodes[0], null);
@@ -189,9 +139,9 @@ namespace ni_compiler {
 					return (cnt, n, bindings);
 				case N1.Negate: {
 						Node inner = n.nodes[0];
-						(int cnt2, Node expr, _) = ReduceAtm(cnt, inner, bindings);
+						(int cnt2, Node expr, var binds) = ReduceAtm(cnt, inner, bindings);
 						string newName = $"s{cnt2}";
-						return (cnt2 + 1, Var(newName), bindings.Add((newName, Negate(expr))));
+						return (cnt2 + 1, Var(newName), binds.Add((newName, Negate(expr))));
 					}
 				case N1.Add: {
 						Node innerA = n.nodes[0];
@@ -216,12 +166,12 @@ namespace ni_compiler {
 			throw new Exception($"Unknown N1 node type {n.type}");
 		}
 
-		public static Node UniquifyNames(Node tree) {
-			(_, _, Node res) = Uniqueify(0, new Env<string>(), tree);
+		public static Node Uniquify(Node tree) {
+			(_, _, Node res) = Uniquify(0, new Env<string>(), tree);
 			return res;
 		}
 
-		public static (int, Env<string>, Node) Uniqueify(int cnt, Env<string> env, Node n) {
+		public static (int, Env<string>, Node) Uniquify(int cnt, Env<string> env, Node n) {
 			switch ((N1)n.type) {
 				case N1.Int:
 				case N1.Read:
@@ -232,26 +182,164 @@ namespace ni_compiler {
 						return (cnt, env, Var(name));
 					}
 				case N1.Negate: {
-						(int cnt2, var env2, Node expr) = Uniqueify(cnt, env, n.nodes[0]);
+						(int cnt2, var env2, Node expr) = Uniquify(cnt, env, n.nodes[0]);
 						return (cnt2, env2, Negate(expr));
 					}
 				case N1.Add: {
-						(int cnta, var env2, Node a) = Uniqueify(cnt, env, n.nodes[0]);
-						(int cntb, var env3, Node b) = Uniqueify(cnta, env2, n.nodes[1]);
+						(int cnta, var env2, Node a) = Uniquify(cnt, env, n.nodes[0]);
+						(int cntb, var env3, Node b) = Uniquify(cnta, env2, n.nodes[1]);
 						return (cntb, env3, Add(a, b));
 					}
 				case N1.Let: {
-						(int cnta, var env2, Node expr) = Uniqueify(cnt, env, n.nodes[0]);
+						(int cnta, var env2, Node expr) = Uniquify(cnt, env, n.nodes[0]);
 						string newName = "s" + cnt;
 						string sym = n.datas[0];
 						Env<string> newEnv = env.Extend(sym, newName);
-						(int cntb, var env3, Node body) = Uniqueify(cnt + 1, newEnv, n.nodes[1]);
+						(int cntb, var env3, Node body) = Uniquify(cnt + 1, newEnv, n.nodes[1]);
 						return (cntb, env3, Let(newName, expr, body));
 					}
 			}
 			throw new Exception($"Unknown N1 node type {n.type}");
 		}
 
+		public class _Tests {
+
+			public static void TestUniquify() {
+				void Verify(string note, Node a, Node b) {
+					try {
+						Node uniqued = Uniquify(a);
+						uniqued.ShouldEqual(b);
+					} catch (Exception e) { throw new Exception(note, e); }
+				}
+				void Fail(string note, Node a, string submsg) {
+					Exception c = null;
+					try {
+						Node uniqued = Uniquify(a);
+					} catch (Exception e) { c = e; }
+					c.ShouldNotBe(null);
+					c.Message.IndexOf(submsg).ShouldNotBe(-1);
+				}
+				Verify("Can uniquify a simple let expression",
+					Let("x", Int(5), Var("x")),
+					Let("s0", Int(5), Var("s0")));
+				Verify("Can uniquify a simple nested let expression 1",
+					Let("x", Int(5), Let("y", Int(5), Var("x"))),
+					Let("s0", Int(5), Let("s1", Int(5), Var("s0"))));
+				Verify("Can uniquify a simple nested let expression 2",
+					Let("x", Int(5), Let("y", Int(5), Var("y"))),
+					Let("s0", Int(5), Let("s1", Int(5), Var("s1"))));
+				Verify("Can uniquify a shadowed name",
+					Let("x", Int(5), Let("x", Int(5), Var("x"))),
+					Let("s0", Int(5), Let("s1", Int(5), Var("s1"))));
+				Verify("Can uniquify a nested let under add",
+					Let("x", Int(5), Add(Int(6), Let("y", Int(5), Var("y")))),
+					Let("s0", Int(5), Add(Int(6), Let("s1", Int(5), Var("s1")))));
+				Verify("Can uniquify a nested let after recursion",
+					Let("x", Int(5), Add(Var("x"), Let("y", Int(5), Var("y")))),
+					Let("s0", Int(5), Add(Var("s0"), Let("s1", Int(5), Var("s1")))));
+				Verify("Can uniquify a nested let after recursion",
+					Let("x", Int(5), Add(Let("y", Int(5), Var("y")), Var("x"))),
+					Let("s0", Int(5), Add(Let("s1", Int(5), Var("s1")), Var("s0"))));
+
+				Fail("Should error when variables are not in scope, inside body",
+					Let("x", Int(5), Add(Let("y", Int(5), Var("y")), Var("missingVarName"))),
+					"missingVarName");
+				Fail("Should error when variables are not in scope, inside expression.",
+					Let("missingVarName", Var("missingVarName"), Add(Let("y", Int(5), Var("y")), Var("missingVarName"))),
+					"missingVarName");
+
+
+			}
+
+			public static void TestGeneral() {
+				Node program = Let("x",
+					Negate(
+						Add(Int(10), Int(30)) // x = -40
+					),
+					Add(Var("x"),
+						Add(Int(2), Int(3)) // x + 2 + 3
+					)
+				);
+
+				int expected1 = -35;
+				int result1 = Interp(program, new Env<int>());
+				result1.ShouldBe(expected1);
+				
+				Node reduced = Reduce(program);
+
+				int result2 = Interp(reduced, new Env<int>());
+				result2.ShouldBe(expected1);
+				
+				Node pevaled = PartialEvaluate(program);
+
+				int result3 = Interp(pevaled, new Env<int>());
+				result3.ShouldBe(expected1);
+				
+				Node pevaledAndReduced = Reduce(pevaled);
+
+				int result4 = Interp(pevaledAndReduced, new Env<int>());
+				result4.ShouldBe(expected1);
+				
+				Node reducedAndUniqued = Uniquify(reduced);
+				int result5 = Interp(reducedAndUniqued, new Env<int>());
+				result5.ShouldBe(expected1);
+				
+			}
+
+
+			public static void TestReduction() {
+
+				Node pg = Add(  // (-(-(5)) + (let x=6,y=6 in x+y)
+						Int(5),
+						Let("x", Int(6),
+							Let("y", Int(6),//lets are complex inners, and need to be reduced
+								Add(Var("x"), Var("y"))
+							)
+						)
+					);
+
+				int expected = 17;
+				Node pgreduced = Reduce(pg);
+				pgreduced.type.ShouldBe(N1.Let.Ord()); // A Let should be promoted to the top
+
+				int result1 = Interp(pg, new Env<int>());
+				int result2 = Interp(pgreduced, new Env<int>());
+				result1.ShouldBe(expected);
+				result2.ShouldBe(expected);
+
+				Node pg2 = Add(  // (-(-5) + (let x=6,y=6 in x+y)
+						Negate(Int(-5)),
+						Let("x", Int(6),
+							Let("y", Int(6),//lets are complex inners, and need to be reduced
+								Add(Var("x"), Var("y"))
+							)
+						)
+					);
+				Node pg2Reduced = Reduce(pg2);
+				int result3 = Interp(pg2Reduced, new Env<int>());
+				result3.ShouldBe(expected);
+				//Log.Info(pg2Reduced.ToString<N1>());
+				
+
+				Node pg3 = Add(  // (-(-(5)) + (let x=6,y=6 in x+y)
+						Negate(Negate(Int(5))),
+						Let("x", Int(6),
+							Let("y", Int(6),//lets are complex inners, and need to be reduced
+								Add(Var("x"), Var("y"))
+							)
+						)
+					);
+
+				Node pg3Reduced = Reduce(pg3);
+				//Log.Info(pg3Reduced.ToString<N1>());
+				int result4 = Interp(pg3Reduced, new Env<int>());
+
+			}
+
+
+
+
+		}
 	}
 
 }
