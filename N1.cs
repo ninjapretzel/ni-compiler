@@ -43,7 +43,7 @@ namespace ni_compiler {
 			n.List(body);
 			return n;
 		}
-
+		public static int Run(Node n) { return Interp(n, new Env<int>()); }
 		public static int Interp(Node n, Env<int> env) {
 			if (n == null) { throw new Exception($"No node to execute"); }
 			N1 type = (N1)n.type;
@@ -203,15 +203,15 @@ namespace ni_compiler {
 		}
 
 		public class _Tests {
-
+			/// <summary> Test cases from professor </summary>
 			public static void TestUniquify() {
 				void Verify(string note, Node a, Node b) {
 					try {
 						Node uniqued = Uniquify(a);
 						uniqued.ShouldEqual(b);
-					} catch (Exception e) { throw new Exception(note, e); }
+					} catch (Exception e) { throw new Exception("Failed to verify: " + note, e); }
 				}
-				void Fail(string note, Node a, string submsg) {
+				void ShouldThrow(string note, Node a, string submsg) {
 					Exception c = null;
 					try {
 						Node uniqued = Uniquify(a);
@@ -241,17 +241,94 @@ namespace ni_compiler {
 					Let("x", Int(5), Add(Let("y", Int(5), Var("y")), Var("x"))),
 					Let("s0", Int(5), Add(Let("s1", Int(5), Var("s1")), Var("s0"))));
 
-				Fail("Should error when variables are not in scope, inside body",
+				ShouldThrow("Should error when variables are not in scope, inside body",
 					Let("x", Int(5), Add(Let("y", Int(5), Var("y")), Var("missingVarName"))),
 					"missingVarName");
-				Fail("Should error when variables are not in scope, inside expression.",
+				ShouldThrow("Should error when variables are not in scope, inside expression.",
 					Let("missingVarName", Var("missingVarName"), Add(Let("y", Int(5), Var("y")), Var("missingVarName"))),
 					"missingVarName");
 
 
 			}
+			/// <summary> Test cases from professor </summary>
+			public static void TestReduceComplex() {
+				void Verify(string note, Node a, Node b) {
+					try {
+						Node reduced = Reduce(a);
+						reduced.ShouldEqual(b);
+					} catch (Exception e) { throw new Exception("Failed to verify: " + note, e); }
+				}
 
-			public static void TestGeneral() {
+				Verify("Reduce does nothing to Int s",
+					Int(7),
+					Int(7));
+				Verify("Reduce does nothing to Read s",
+					Read(),
+					Read());
+				Verify("Reduce does nothing to Var s",
+					Var("x"),
+					Var("x"));
+				Verify("Reduce does nothing to Negate with Atomic inner exp",
+					Negate(Int(7)),
+					Negate(Int(7)));
+				Verify("Reduce does nothing to Negate with Atomic inner Int exp",
+					Negate(Int(7)),
+					Negate(Int(7)));
+				Verify("Reduce does nothing to Negate with Atomic inner Var exp",
+					Negate(Var("x")),
+					Negate(Var("x")));
+				Verify("Reduce does nothing to Add with Atomic inner Int exps",
+					Add(Int(6), Int(7)),
+					Add(Int(6), Int(7)));
+				Verify("Reduce does nothing to Add with Atomic inner Var exps",
+					Add(Int(6), Var("x")),
+					Add(Int(6), Var("x")));
+				Verify("Reduce does nothing to simple Let",
+					Let("x", Int(5), Var("x")),
+					Let("x", Int(5), Var("x")));
+				Verify("Reduce does nothing to complex Let expression",
+					Let("x", Negate(Int(5)), Var("x")),
+					Let("x", Negate(Int(5)), Var("x")));
+
+				Verify("Reduce hoists inner Negate out of add, but preserves outer let",
+					Let("x", Add(Negate(Int(5)), Int(3)), Var("x")),
+					Let("x", Let("s0", Negate(Int(5)), Add(Var("s0"), Int(3))), Var("x")) );
+
+				Verify("Reduce hoists inner Add out of negate, but preserves outer let",
+					Let("x", Int(5), Negate(Add(Var("x"), Var("x")))),
+					Let("x", Int(5), Let("s0", Add(Var("x"), Var("x")), Negate(Var("s0")))) );
+
+				Verify("Reduce hoists nested Negate and Add, and preserves outer let",
+					Let("x", Int(5), Negate(Add(Var("x"), Negate(Var("x"))))),
+					Let("x", Int(5), Let("s0", Negate(Var("x")), Let("s1", Add(Var("x"), Var("s0")), Negate(Var("s1"))))) );
+
+				Verify("Reduce hoists non-Atomic nested Negate with inner Int exp",
+					Negate(Negate(Int(7))),
+					Let("s0", Negate(Int(7)), Negate(Var("s0"))) );
+				Verify("Reduce hoists non-Atomic nested Negate with inner Var exp",
+					Negate(Negate(Var("x"))),
+					Let("s0", Negate(Var("x")), Negate(Var("s0"))));
+				Verify("Reduce hoists non-atomic Add operands",
+					Add(Var("x"), Negate(Int(7))),
+					Let("s0", Negate(Int(7)), Add(Var("x"), Var("s0"))) );
+				Verify("Reduce hoists non-atomic Add operands in correct left-to-right order",
+					Add(Negate(Var("x")), Negate(Int(7))),
+					Let("s0", Negate(Var("x")), 
+						Let("s1", Negate(Int(7)), 
+							Add(Var("s0"), Var("s1")))));
+				Verify("Reduce hoists deep nesting in the correct order",
+					Add(Negate(Int(5)), Add(Negate(Int(7)), Negate(Int(8)))),
+					Let("s0", Negate(Int(5)), 
+						Let("s1", Negate(Int(7)), 
+							Let("s2", Negate(Int(8)),
+								Let("s3", Add(Var("s1"), Var("s2")), 
+									Add(Var("s0"), Var("s3")))))));
+
+
+
+			}
+
+			public static void TestTransformationsPreserveResults() {
 				Node program = Let("x",
 					Negate(
 						Add(Int(10), Int(30)) // x = -40
@@ -262,77 +339,76 @@ namespace ni_compiler {
 				);
 
 				int expected1 = -35;
-				int result1 = Interp(program, new Env<int>());
+				int result1 = Run(program);
 				result1.ShouldBe(expected1);
 				
 				Node reduced = Reduce(program);
 
-				int result2 = Interp(reduced, new Env<int>());
+				int result2 = Run(reduced);
 				result2.ShouldBe(expected1);
 				
 				Node pevaled = PartialEvaluate(program);
 
-				int result3 = Interp(pevaled, new Env<int>());
+				int result3 = Run(pevaled);
 				result3.ShouldBe(expected1);
 				
 				Node pevaledAndReduced = Reduce(pevaled);
 
-				int result4 = Interp(pevaledAndReduced, new Env<int>());
+				int result4 = Run(pevaledAndReduced);
 				result4.ShouldBe(expected1);
 				
 				Node reducedAndUniqued = Uniquify(reduced);
-				int result5 = Interp(reducedAndUniqued, new Env<int>());
+				int result5 = Run(reducedAndUniqued);
 				result5.ShouldBe(expected1);
 				
 			}
 
-
 			public static void TestReduction() {
-
 				Node pg = Add(  // (-(-(5)) + (let x=6,y=6 in x+y)
-						Int(5),
-						Let("x", Int(6),
-							Let("y", Int(6),//lets are complex inners, and need to be reduced
-								Add(Var("x"), Var("y"))
-							)
+					Int(5),
+					Let("x", Int(6),
+						Let("y", Int(6),//lets are complex inners, and need to be reduced
+							Add(Var("x"), Var("y"))
 						)
-					);
+					)
+				);
 
 				int expected = 17;
 				Node pgreduced = Reduce(pg);
 				pgreduced.type.ShouldBe(N1.Let.Ord()); // A Let should be promoted to the top
 
-				int result1 = Interp(pg, new Env<int>());
-				int result2 = Interp(pgreduced, new Env<int>());
+				int result1 = Run(pg);
+				int result2 = Run(pgreduced);
 				result1.ShouldBe(expected);
 				result2.ShouldBe(expected);
 
 				Node pg2 = Add(  // (-(-5) + (let x=6,y=6 in x+y)
-						Negate(Int(-5)),
-						Let("x", Int(6),
-							Let("y", Int(6),//lets are complex inners, and need to be reduced
-								Add(Var("x"), Var("y"))
-							)
+					Negate(Int(-5)),
+					Let("x", Int(6),
+						Let("y", Int(6),//lets are complex inners, and need to be reduced
+							Add(Var("x"), Var("y"))
 						)
-					);
+					)
+				);
+
 				Node pg2Reduced = Reduce(pg2);
-				int result3 = Interp(pg2Reduced, new Env<int>());
+				int result3 = Run(pg2Reduced);
 				result3.ShouldBe(expected);
 				//Log.Info(pg2Reduced.ToString<N1>());
 				
 
 				Node pg3 = Add(  // (-(-(5)) + (let x=6,y=6 in x+y)
-						Negate(Negate(Int(5))),
-						Let("x", Int(6),
-							Let("y", Int(6),//lets are complex inners, and need to be reduced
-								Add(Var("x"), Var("y"))
-							)
+					Negate(Negate(Int(5))),
+					Let("x", Int(6),
+						Let("y", Int(6),//lets are complex inners, and need to be reduced
+							Add(Var("x"), Var("y"))
 						)
-					);
+					)
+				);
 
 				Node pg3Reduced = Reduce(pg3);
 				//Log.Info(pg3Reduced.ToString<N1>());
-				int result4 = Interp(pg3Reduced, new Env<int>());
+				int result4 = Run(pg3Reduced);
 
 			}
 
