@@ -9,7 +9,7 @@ namespace ni_compiler {
 
 	public class C0Lang {
 		public class _Tests {
-			public static void TestWhatever() {
+			public static void TestBasicProgram() {
 				Node program =
 					Seq(Assign("x", Int(5)),
 					Seq(Assign("nx", Sub(Var("x"))),
@@ -22,8 +22,8 @@ namespace ni_compiler {
 
 				result.ShouldBe(5);
 				//Console.WriteLine($"Got result {result} / Env<int> {final}");
-
 			}
+
 		}
 		public enum C0 : int {
 			Int, Var,
