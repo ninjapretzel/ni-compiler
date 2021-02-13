@@ -38,9 +38,9 @@ namespace ni_compiler {
 		/// <param name="reducer"> Function to reduce list content </param>
 		/// <param name="value"> Initial accumulator value </param>
 		/// <returns> Final reduction result </returns>
-		public static R FoldR<T, R>(this LL<T> list, Func<R, T, R> reducer, R value) {
+		public static R FoldL<T, R>(this LL<T> list, Func<R, T, R> reducer, R value) {
 			if (list == null) { return value; }
-			return FoldR(list.next, reducer, reducer(value, list.data));
+			return FoldL(list.next, reducer, reducer(value, list.data));
 		}
 		/// <summary> Fold a list from "Left to right" </summary>
 		/// <typeparam name="T"> Generic content type </typeparam>
@@ -49,9 +49,9 @@ namespace ni_compiler {
 		/// <param name="reducer"> Function to reduce list content </param>
 		/// <param name="value"> Initial accumulator value </param>
 		/// <returns> Final reduction result </returns>
-		public static R FoldL<T, R>(this LL<T> list, Func<R, T, R> reducer, R value) {
+		public static R FoldR<T, R>(this LL<T> list, Func<R, T, R> reducer, R value) {
 			if (list == null) { return value; }
-			R next = FoldL(list.next, reducer, value);
+			R next = FoldR(list.next, reducer, value);
 			return reducer(next, list.data);
 		}
 	}
@@ -85,6 +85,27 @@ namespace ni_compiler {
 			_toString = elem + old._toString;
 			return $"{{{_toString}\n}}";
 		}
+		public override bool Equals(object obj) {
+			if (obj is Env<T> other) {
+				var trace1 = list;
+				var trace2 = other.list;
+
+				while (trace1 != null && trace2 != null) {
+					(string sym1, T val1) = trace1.data;
+					(string sym2, T val2) = trace2.data;
+
+					if (sym1 != sym2) { return false; }
+					if (!val1.Equals(val2)) { return false; }
+
+					trace1 = trace1.next;
+					trace2 = trace2.next;
+				}
+				if (trace1 == null && trace2 != null) { return false; }
+				if (trace1 != null && trace2 == null) { return false; }
+				return true;
+			}
+			return false;
+		}
 		/// <summary> Extend the given environment with a new symbol/value pair </summary>
 		/// <param name="sym"> Symbol to extend with </param>
 		/// <param name="val"> Value to bind to symbol </param>
@@ -94,7 +115,6 @@ namespace ni_compiler {
 		/// <param name="sym"> Symbol to look up. </param>
 		/// <returns> Found value, or throws an exception if it is not found. </returns>
 		public T Lookup(string sym) {
-			int i = 0;
 			var trace = list;
 			while (trace != null) {
 				(string name, T val) = trace.data;
@@ -199,6 +219,41 @@ namespace ni_compiler {
 			datas = null;
 
 			this.type = type;
+		}
+
+		public override bool Equals(object obj) {
+			if (obj is Node other) {
+				if (other.DataListed != DataListed) { return false; }
+				if (other.DataMapped != DataMapped) { return false; }
+				if (other.NodesListed != NodesListed) { return false; }
+				if (other.NodesMapped != NodesMapped) { return false; }
+				if (datas != null) {
+					for (int i = 0; i < datas.Count; i++) { 
+						if (!datas[i].Equals(other.datas[i])) { return false; } 
+					}
+				}
+				if (nodes != null) {
+					for (int i = 0; i < nodes.Count; i++) { 
+						if (!nodes[i].Equals(other.nodes[i])) { return false; } 
+					}
+				}
+				if (dataMap != null) {
+					foreach (var pair in dataMap) {
+						string key = pair.Key; string val = pair.Value;
+						if (!other.dataMap.ContainsKey(key)) { return false; }
+						if (!val.Equals(other.dataMap[key])) { return false; }
+					}
+				}
+				if (nodeMap != null) {
+					foreach (var pair in nodeMap) {
+						string key = pair.Key; Node val = pair.Value;
+						if (!other.nodeMap.ContainsKey(key)) { return false; }
+						if (!val.Equals(other.nodeMap[key])) { return false; }
+					}
+				}
+				return true;
+			}
+			return false;
 		}
 
 		///<summary> Adds the given <paramref name="token"/> to the node's tokens list. </summary>
