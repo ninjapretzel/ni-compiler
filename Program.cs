@@ -30,6 +30,7 @@ namespace ni_compiler {
 		}
 
 		public static void Main(string[] args) {
+			Console.Clear();
 			SetupLogger();
 
 			BakaTestHook.logger = (str) => { Log.Info(str, "Tests"); };
