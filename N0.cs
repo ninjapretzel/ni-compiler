@@ -1,4 +1,5 @@
-﻿using System;
+﻿using BakaTest;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -7,13 +8,6 @@ using System.Threading.Tasks;
 namespace ni_compiler {
 
 	public class N0Lang {
-
-		public static void Run() {
-			Node program = Add(Negate(Int(5)), Read());
-
-			int result = InterpN0(program);
-			Console.WriteLine($"Program Result: {result}");
-		}
 
 		public enum N0 : int {
 			Int, Read, Negate, Add
@@ -53,6 +47,15 @@ namespace ni_compiler {
 			} else { throw new Exception($"Unknown Type {type}"); }
 		}
 
+		public class _Tests {
+
+			public static void TestBasicProgram() {
+				Node program = Add(Negate(Int(5)), Int(30));
+
+				int result = InterpN0(program);
+				result.ShouldBe(25);
+			}
+		}
 	}
 
 }
