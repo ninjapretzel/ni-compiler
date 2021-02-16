@@ -43,8 +43,10 @@ namespace ni_compiler {
 			n.List(body);
 			return n;
 		}
-		public static int Run(Node n) { return Interp(n, new Env<int>()); }
-		public static int Interp(Node n, Env<int> env) {
+		public static int Run(Node n) { return Interp(n); }
+
+		public static int Interp(Node n, Env<int> env = null) {
+			if (env == null) { env = new Env<int>(); }
 			if (n == null) { throw new Exception($"No node to execute"); }
 			N1 type = (N1)n.type;
 			switch (type) {
