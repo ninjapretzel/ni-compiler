@@ -31,6 +31,7 @@ namespace ni_compiler {
 
 		public static void Main(string[] args) {
 			Console.Clear();
+			Macros.FixSourceFiles(SourceFileDirectory());
 			SetupLogger();
 
 			BakaTestHook.logger = (str) => { Log.Info(str, "Tests"); };
