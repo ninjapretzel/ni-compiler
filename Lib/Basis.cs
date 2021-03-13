@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
@@ -8,17 +9,37 @@ namespace ni_compiler {
 
 	/// <summary> Basic singly linked list node type. </summary>
 	/// <typeparam name="T"> Generic content type </typeparam>
-	public class LL<T> {
+	public class LL<T> : IEnumerable<T> {
 		/// <summary> Current data </summary>
 		public T data;
 		/// <summary> Link to next node </summary>
 		public LL<T> next;
+
 		/// <summary> Construct a new node with the given data/next link </summary>
 		/// <param name="data"> data item to store </param>
 		/// <param name="next"> next link or null </param>
 		public LL(T data, LL<T> next = null) {
 			this.data = data;
 			this.next = next;
+		}
+		public IEnumerator<T> GetEnumerator() { return new Enumerator(this); }
+		IEnumerator IEnumerable.GetEnumerator() { return new Enumerator(this); }
+
+		public class Enumerator : IEnumerator<T> {
+			public Enumerator(LL<T> start) { this.start = start; }
+			private LL<T> start;
+			private LL<T> cur;
+			public T Current { get { return cur.data; } }
+			object IEnumerator.Current { get { return cur.data; } }
+			public void Dispose() { }
+			public void Reset() { cur = start; }
+			public bool MoveNext() { 
+				if (cur.next != null) {
+					cur = cur.next;
+					return true;
+				}
+				return false;
+			}
 		}
 	}
 	/// <summary> Extension methods for <see cref="LL{T}"/> so that calling them on null is valid. </summary>
@@ -483,8 +504,7 @@ namespace ni_compiler {
 		public int line { get; private set; }
 		/// <summary> Column of line the token was created on, if applicable. </summary>
 		public int col { get; private set; }
-
-
+		
 		/// <summary> Assigns both content and type to the same string. </summary>
 		/// <param name="content"> Content/type for this token</param>
 		public Token(string content, int line = -1, int col = -1) {
@@ -532,4 +552,5 @@ namespace ni_compiler {
 
 
 	}
+
 }
