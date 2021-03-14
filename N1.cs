@@ -206,8 +206,8 @@ namespace ni_compiler {
 		}
 
 		public class _Tests {
-			static string prog = @"
-let ni 
+			static string prog = 
+@"let ni 
 	y 
 is 
 	let ni 
@@ -220,6 +220,7 @@ is
 in 
 	y
 end";
+			static string badprog = @"let ni omg is wtf in bbq gtfo";
 			public static void TestTokenize() {
 				Tokenizer tok = new Tokenizer(prog);
 				Token t;
@@ -256,7 +257,22 @@ end";
 				Node parsed = tok.ParseExpression();
 
 				parsed.type.ShouldBe(N1.Let.Ord());
+				parsed.datas[0].ShouldBe("y");
+				parsed.nodes[0].type.ShouldBe(N1.Let.Ord());
+				parsed.nodes[0].nodes[0].type.ShouldBe(N1.Int.Ord());
+				parsed.nodes[0].nodes[1].type.ShouldBe(N1.Add.Ord());
+				parsed.nodes[0].nodes[1].nodes[0].type.ShouldBe(N1.Var.Ord());
+				parsed.nodes[0].nodes[1].nodes[1].type.ShouldBe(N1.Let.Ord());
 
+				parsed.nodes[1].type.ShouldBe(N1.Var.Ord());
+
+				try {
+					Tokenizer badTok = new Tokenizer(badprog);
+					Node failed = badTok.ParseExpression();
+				} catch (Exception e) {
+					e.Message.Contains("line 1").ShouldBeTrue();
+					e.Message.Contains("Expected: [end]").ShouldBeTrue();
+				}
 
 			}
 			/// <summary> Test cases from professor </summary>
@@ -418,7 +434,7 @@ end";
 				result5.ShouldBe(expected1);
 				
 			}
-
+			
 			public static void TestReduction() {
 				Node pg = Add(  // (-(-(5)) + (let x=6,y=6 in x+y)
 					Int(5),
@@ -467,10 +483,7 @@ end";
 				int result4 = Run(pg3Reduced);
 
 			}
-
-
-
-
+			
 		}
 
 		/// <summary> Impossible token representing type for names </summary>
@@ -479,12 +492,12 @@ end";
 		public const string NUMBER = "!NUM";
 		/// <summary> Impossible token representing type for strings</summary>
 		public const string STRING = "!STR";
-		/// <summary> type for names </summary>
+		/// <summary> type for spaces</summary>
 		public const string SPACE = " ";
-		/// <summary> type for names </summary>
-		public const string NEWLINE = "\n";
-		/// <summary> type for names </summary>
+		/// <summary> type for tabs </summary>
 		public const string TAB = "\t";
+		/// <summary> type for newlines </summary>
+		public const string NEWLINE = "\n";
 		/// <summary> Keywords of the language </summary>
 		public static readonly string[] keywords = {
 			"let", "ni", "is", "in", "end", "read",
@@ -568,7 +581,7 @@ end";
 			tok.RequireNext("ni");
 			tok.Require("!NAME");
 			
-			Token name = tok.Next();
+			Token name = tok.peekToken; tok.Next();
 			tok.RequireNext("is");
 
 			Node value = tok.ParseExpression();
@@ -590,11 +603,11 @@ end";
 			public string src { get; private set; }
 
 			/// <summary> Current column </summary>
-			public int col { get; private set; }
+			public int col { get; private set; } = 0;
 			/// <summary> Current line </summary>
-			public int line { get; private set; }
+			public int line { get; private set; } = 1;
 			/// <summary> Current raw char position </summary>
-			public int i { get; private set; }
+			public int i { get; private set; } = 0;
 
 
 			/// <summary> Token ahead of cursor, which hasn't been consumed. </summary>
@@ -620,10 +633,35 @@ end";
 
 			/// <summary> Throw an exception with a given message </summary>
 			/// <param name="message"></param>
-			public void Error(string message) { throw new Exception(message + "\n" + this); }
+			public void Error(string message) { throw new Exception($"{message}\n{this}"); }
+
+			public override string ToString() {
+				return $"Source near line {line}:"
+					+ $"\n-------------------===="
+					+ $"\n{LinesNear(line)}"
+					+ $"\n-------------------===="
+					+ $"\nToken: {peekToken} (Line {line} : Col {col})";
+			}
+
+			public string LinesNear(int line, int around = 3) {
+				StringBuilder str = new StringBuilder();
+				int curLine = 0;
+				int i = 0;
+				for (; i < src.Length; i++) {
+					if (src[i] == '\n') { curLine++; }
+					if (curLine >= line - around) { i++; break; }
+				}
+				str.Append($"{curLine:d5}: ");
+				for (; i < src.Length; i++) {
+					str.Append(src[i]);
+					if (src[i] == '\n') { curLine++; str.Append($"{curLine:d5}: "); }
+					if (curLine >= line + around) { break; }
+				}
+				return str.ToString();
+			}
 
 			/// <summary> Throws an exception if the peekToken is NOT the given type. </summary>
-			public void Require(string type) { if (!peekToken.Is(type)) { Error("Expected: " + type); } }
+			public void Require(string type) { if (!peekToken.Is(type)) { Error($"Expected: [{type}]"); } }
 
 			/// <summary> Throws an exception if the peekToken is NOT one of the given types. </summary>
 			public void Require(string[] types) {
@@ -685,7 +723,8 @@ end";
 			/// <returns> True if moved at all, false if nothing happened. </returns>
 			public bool Move() {
 				if (peekToken.IsValid) {
-					if (peekToken.Is(NEWLINE)) { col = 0; line++; } else { col += peekToken.content.Length; }
+					if (peekToken.Is(NEWLINE)) { col = 0; line++; } 
+					else { col += peekToken.content.Length; }
 
 					i += peekToken.content.Length;
 					lastToken = peekToken;
@@ -704,6 +743,7 @@ end";
 				if (c == ' ') { return new Token(SPACE, line, col); }
 				if (c == '\t') { return new Token(TAB, line, col); }
 				if (c == '\n') { return new Token(NEWLINE, line, col); }
+				if (c == '\r') { throw new Exception("Oops CLRF! Get fucked!"); }
 				if (c == '\"') { return ExtractString('\"'); }
 				if (c == '\'') { return ExtractString('\''); }
 				foreach (string p in punct) { if (src.MatchAt(i, p)) { return new Token(p, line, col); } }
@@ -744,9 +784,6 @@ end";
 				return new Token(src.Substring(i, len), STRING, line, col);
 			}
 
-			public override string ToString() {
-				return "Token: " + peekToken + " on Line: " + line + " Col " + col;
-			}
 		}
 	}
 	
