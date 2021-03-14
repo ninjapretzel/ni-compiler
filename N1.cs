@@ -215,7 +215,7 @@ is
 	is 
 		20
 	in
-		x1 + (let ni x2 is 22)
+		x1 + (let ni x2 is 22 in x2 end)
 	end
 in 
 	y
@@ -223,30 +223,41 @@ end";
 			public static void TestTokenize() {
 				Tokenizer tok = new Tokenizer(prog);
 				Token t;
-				t = tok.peekToken; tok.Next();t.type.ShouldBe("let");
-				t = tok.peekToken; tok.Next();t.type.ShouldBe("ni");
-				t = tok.peekToken; tok.Next();t.type.ShouldBe("!NAME"); t.content.ShouldBe("y");
-				t = tok.peekToken; tok.Next();t.type.ShouldBe("is");
-				t = tok.peekToken; tok.Next();t.type.ShouldBe("let");
-				t = tok.peekToken; tok.Next();t.type.ShouldBe("ni");
-				t = tok.peekToken; tok.Next();t.type.ShouldBe("!NAME"); t.content.ShouldBe("x1");
-				t = tok.peekToken; tok.Next();t.type.ShouldBe("is");
-				t = tok.peekToken; tok.Next();t.type.ShouldBe("!NUM"); t.content.ShouldBe("20");
-				t = tok.peekToken; tok.Next();t.type.ShouldBe("in");
-				t = tok.peekToken; tok.Next();t.type.ShouldBe("!NAME"); t.content.ShouldBe("x1");
-				t = tok.peekToken; tok.Next();t.type.ShouldBe("+");
-				t = tok.peekToken; tok.Next();t.type.ShouldBe("(");
-				t = tok.peekToken; tok.Next();t.type.ShouldBe("let");
-				t = tok.peekToken; tok.Next();t.type.ShouldBe("ni");
-				t = tok.peekToken; tok.Next();t.type.ShouldBe("!NAME"); t.content.ShouldBe("x2");
-				t = tok.peekToken; tok.Next();t.type.ShouldBe("is");
-				t = tok.peekToken; tok.Next();t.type.ShouldBe("!NUM"); t.content.ShouldBe("22");
-				t = tok.peekToken; tok.Next();t.type.ShouldBe(")");
-				t = tok.peekToken; tok.Next();t.type.ShouldBe("end");
-				t = tok.peekToken; tok.Next();t.type.ShouldBe("in");
-				t = tok.peekToken; tok.Next();t.type.ShouldBe("!NAME"); t.content.ShouldBe("y");
-				t = tok.peekToken; tok.Next();t.type.ShouldBe("end");
-				
+				t = tok.peekToken; tok.Next(); t.type.ShouldBe("let");
+				t = tok.peekToken; tok.Next(); t.type.ShouldBe("ni");
+				t = tok.peekToken; tok.Next(); t.type.ShouldBe("!NAME"); t.content.ShouldBe("y");
+				t = tok.peekToken; tok.Next(); t.type.ShouldBe("is");
+				t = tok.peekToken; tok.Next(); t.type.ShouldBe("let");
+				t = tok.peekToken; tok.Next(); t.type.ShouldBe("ni");
+				t = tok.peekToken; tok.Next(); t.type.ShouldBe("!NAME"); t.content.ShouldBe("x1");
+				t = tok.peekToken; tok.Next(); t.type.ShouldBe("is");
+				t = tok.peekToken; tok.Next(); t.type.ShouldBe("!NUM"); t.content.ShouldBe("20");
+				t = tok.peekToken; tok.Next(); t.type.ShouldBe("in");
+				t = tok.peekToken; tok.Next(); t.type.ShouldBe("!NAME"); t.content.ShouldBe("x1");
+				t = tok.peekToken; tok.Next(); t.type.ShouldBe("+");
+				t = tok.peekToken; tok.Next(); t.type.ShouldBe("(");
+				t = tok.peekToken; tok.Next(); t.type.ShouldBe("let");
+				t = tok.peekToken; tok.Next(); t.type.ShouldBe("ni");
+				t = tok.peekToken; tok.Next(); t.type.ShouldBe("!NAME"); t.content.ShouldBe("x2");
+				t = tok.peekToken; tok.Next(); t.type.ShouldBe("is");
+				t = tok.peekToken; tok.Next(); t.type.ShouldBe("!NUM"); t.content.ShouldBe("22");
+				t = tok.peekToken; tok.Next(); t.type.ShouldBe("in");
+				t = tok.peekToken; tok.Next(); t.type.ShouldBe("!NAME"); t.content.ShouldBe("x2");
+				t = tok.peekToken; tok.Next(); t.type.ShouldBe("end");
+				t = tok.peekToken; tok.Next(); t.type.ShouldBe(")");
+				t = tok.peekToken; tok.Next(); t.type.ShouldBe("end");
+				t = tok.peekToken; tok.Next(); t.type.ShouldBe("in");
+				t = tok.peekToken; tok.Next(); t.type.ShouldBe("!NAME"); t.content.ShouldBe("y");
+				t = tok.peekToken; tok.Next(); t.type.ShouldBe("end");
+			}
+			
+			public static void TestParser() {
+				Tokenizer tok = new Tokenizer(prog);
+				Node parsed = tok.ParseExpression();
+
+				parsed.type.ShouldBe(N1.Let.Ord());
+
+
 			}
 			/// <summary> Test cases from professor </summary>
 			public static void TestUniquify() {
@@ -524,8 +535,12 @@ end";
 			if (tok.At(LEAFS)) {
 				Node leaf = tok.ParseLeaf();
 				if (tok.At("+")) {
-					
+					tok.Next();
+					return Add(leaf, tok.ParseExpression());
+				} else {
+					return leaf;
 				}
+				
 			}
 			tok.Error($"Unknown start of expression {tok.peekToken}");
 			return null;
@@ -547,6 +562,7 @@ end";
 			tok.Error("Unknown leaf value token");
 			return null;
 		}
+
 		public static Node ParseLet(this Tokenizer tok) {
 			tok.RequireNext("let");
 			tok.RequireNext("ni");
@@ -556,21 +572,14 @@ end";
 			tok.RequireNext("is");
 
 			Node value = tok.ParseExpression();
-			Node expr;
-			if (tok.At("in")) {
-				tok.RequireNext("in");
-				expr = tok.ParseExpression();
-				tok.RequireNext("end");
-			} else {
-				expr = new Node(N1.Var.Ord());
-				expr.List(name);
-			}
-
+			tok.RequireNext("in");
+			Node expr = tok.ParseExpression();
+			tok.RequireNext("end");
+			
 			Node let = new Node(N1.Let.Ord());
 			let.List(name);
 			let.List(value);
 			let.List(expr);
-
 			return let;
 		}
 
