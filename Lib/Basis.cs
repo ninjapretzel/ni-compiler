@@ -466,6 +466,279 @@ namespace ni_compiler {
 
 			return str.ToString();
 		}
+
+	}
+
+
+	/// <summary> Class used to build program trees from, restricted to a single Type</summary>
+	public class Node<T> where T : Enum {
+
+		/// <summary> Unordered Map of data within the node </summary>
+		public Dictionary<string, string> dataMap;
+		/// <summary> Unordered Map of children of the node </summary>
+		public Dictionary<string, Node<T>> nodeMap;
+
+		/// <summary> Ordered List of children </summary>
+		public List<Node<T>> nodes;
+		/// <summary> Ordered list of data </summary>
+		public List<string> datas;
+
+		/// <summary> Tokens that compose this node for sourcemapping information. </summary>
+		public List<Token> tokens;
+
+		/// <summary> Number of entries in the ordered data 'list' </summary>
+		public int DataListed { get { return datas?.Count ?? 0; } }
+
+		/// <summary> Number of entries in the ordered children 'list' </summary>
+		public int NodesListed { get { return nodes?.Count ?? 0; } }
+
+		/// <summary> Number of data values mapped </summary>
+		public int DataMapped { get { return dataMap?.Count ?? 0; } }
+
+		/// <summary> Number of child nodes mapped </summary>
+		public int NodesMapped { get { return nodeMap?.Count ?? 0; } }
+
+		/// <summary> Gets/sets the type id for this node. </summary>
+		public T type { get; set; }
+		/// <summary> Constant for untyped nodes. </summary>
+		public const int UNTYPED = -1;
+
+		/// <summary> Get first line this node is on, or -1 if no tokens are recorded. </summary>
+		public int line { get { return tokens != null ? tokens[0].line : -1; } }
+		/// <summary> Get column of first line this node is on, or -1 if no tokens are recorded. </summary>
+		public int col { get { return tokens != null ? tokens[0].col : -1; } }
+
+		/// <summary> Does this node have source position information? </summary>
+		public bool hasSrcLineCol { get { return line != -1 && col != -1; } }
+		/// <summary> Get line/col information </summary>
+		public string srcLineCol { get { return $"From [Line {line}, Col {col}] - [Line {lastLine}, Col {lastCol}]"; } }
+
+		/// <summary> Gets the last line this node is on, or -1 if no tokens are recorded. </summary>
+		public int lastLine {
+			get {
+				int max = -1;
+				if (tokens != null) {
+					foreach (var token in tokens) { if (token.line > max) { max = token.line; } }
+				}
+				return max;
+			}
+		}
+		/// <summary> Gets the last column on the last line this node is on in the source code. </summary>
+		public int lastCol {
+			get {
+				int maxLine = -1;
+				int maxCol = -1;
+
+				if (tokens != null) {
+					for (int i = 0; i < tokens.Count; i++) {
+						var token = tokens[i];
+						if (token.line > maxLine) {
+							maxLine = token.line;
+							maxCol = token.col;
+						} else if (token.line == maxLine) {
+							if (token.col > maxCol) { maxCol = token.col; }
+						}
+
+					}
+				}
+				return col;
+			}
+		}
+
+		/// <summary> Empty Constructor </summary>
+		public Node() {
+			dataMap = null;
+			nodeMap = null;
+			nodes = null;
+			datas = null;
+
+			type = default(T);
+		}
+
+		/// <summary> Constructor which takes a type parameter. </summary>
+		/// <param name="type"> Type value for the node. </param>
+		public Node(T type) {
+			nodeMap = null;
+			dataMap = null;
+			nodes = null;
+			datas = null;
+
+			this.type = type;
+		}
+
+		public override bool Equals(object obj) {
+			if (obj is Node<T> other) {
+				if (other.DataListed != DataListed) { return false; }
+				if (other.DataMapped != DataMapped) { return false; }
+				if (other.NodesListed != NodesListed) { return false; }
+				if (other.NodesMapped != NodesMapped) { return false; }
+				if (datas != null) {
+					for (int i = 0; i < datas.Count; i++) {
+						if (!datas[i].Equals(other.datas[i])) { return false; }
+					}
+				}
+				if (nodes != null) {
+					for (int i = 0; i < nodes.Count; i++) {
+						if (!nodes[i].Equals(other.nodes[i])) { return false; }
+					}
+				}
+				if (dataMap != null) {
+					foreach (var pair in dataMap) {
+						string key = pair.Key; string val = pair.Value;
+						if (!other.dataMap.ContainsKey(key)) { return false; }
+						if (!val.Equals(other.dataMap[key])) { return false; }
+					}
+				}
+				if (nodeMap != null) {
+					foreach (var pair in nodeMap) {
+						string key = pair.Key; Node<T> val = pair.Value;
+						if (!other.nodeMap.ContainsKey(key)) { return false; }
+						if (!val.Equals(other.nodeMap[key])) { return false; }
+					}
+				}
+				return true;
+			}
+			return false;
+		}
+
+		///<summary> Adds the given <paramref name="token"/> to the node's tokens list. </summary>
+		public void Add(Token token) {
+			if (tokens == null) { tokens = new List<Token>(); }
+			tokens.Add(token);
+		}
+
+		/// <summary> Maps the given <paramref name="node"/> by <paramref name="name"/> and returns the mapped node </summary>
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		public Node<T> Map(string name, Node<T> node) {
+			if (nodeMap == null) { nodeMap = new Dictionary<string, Node<T>>(); }
+			if (node != null) { nodeMap[name] = node; }
+			return node;
+		}
+
+		/// <summary> Inserts the <paramref name="node"/> into the 'list' at index <see cref="NodesListed"/> and returns the listed node </summary>
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		public Node<T> List(Node<T> node) {
+			if (nodes == null) { nodes = new List<Node<T>>(); }
+			if (node != null) { nodes.Add(node); }
+			return node;
+		}
+
+		/// <summary> Maps the given <paramref name="val"/> into data by <paramref name="name"/> </summary>
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		public void Map(string name, string val) {
+			if (dataMap == null) { dataMap = new Dictionary<string, string>(); }
+			if (val != null) { dataMap[name] = val; }
+		}
+
+		/// <summary> Maps the given <paramref name="val"/>'s content into data by <paramref name="name"/> </summary>
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		public void Map(string name, Token val) {
+			if (tokens == null) { tokens = new List<Token>(); }
+			tokens.Add(val);
+			Map(name, val.content);
+		}
+
+		/// <summary> Adds the given <paramref name="val"/> into the 'list' of data at index <see cref="DataListed"/> </summary>
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		public void List(string val) {
+			if (datas == null) { datas = new List<string>(); }
+			if (val != null) { datas.Add(val); }
+			//if (val != null) { dataMap[""+(dataListSize++)] = val; }
+		}
+
+		/// <summary> Adds the given <paramref name="val"/>'s content into the 'list' of data at index <see cref="DataListed"/> </summary>
+		[MethodImpl(MethodImplOptions.AggressiveInlining)]
+		public void List(Token val) {
+			if (tokens == null) { tokens = new List<Token>(); }
+			tokens.Add(val);
+			List(val.content);
+		}
+
+		/// <summary> Returns a child by index. </summary>
+		/// <param name="index"> Index of child node to grab </param>
+		/// <returns> Child node at <paramref name="index"/>, or null if there is none. </returns>
+		public Node<T> Child(int index) {
+			if (nodes == null) { return null; }
+			if (index < nodes.Count) { return nodes[index]; }
+			return null;
+		}
+
+		/// <summary> Returns a child by name. </summary>
+		/// <param name="name"> Name of child to grab </param>
+		/// <returns> Child node mapped to <paramref name="name"/>, or null if there is none. </returns>
+		public Node<T> Child(string name) {
+			if (nodeMap == null) { return null; }
+			if (nodeMap.ContainsKey(name)) { return nodeMap[name]; }
+			return null;
+		}
+
+		/// <summary> Returns a data value by index. </summary>
+		/// <param name="index"> Index of data value to grab </param>
+		/// <returns> Data value at <paramref name="index"/>, or null if there is none. </returns>
+		public string Data(int index) {
+			if (datas == null) { return null; }
+			if (index < datas.Count) { return datas[index]; }
+			return null;
+		}
+
+		/// <summary> Returns a data value by name. </summary>
+		/// <param name="name"> Name of data value to grab </param>
+		/// <returns> Data value mapped to <paramref name="name"/>, or null if there is none. </returns>
+		public string Data(string name) {
+			if (dataMap == null) { return null; }
+			if (dataMap.ContainsKey(name)) { return dataMap[name]; }
+			return null;
+		}
+
+		/// <inheritdoc />
+		public override string ToString() { return ToString(0); }
+
+		public string ToString(int indent = 0, string indentString = "  ") {
+			StringBuilder str = new StringBuilder();
+			string ident = "";
+			for (int i = 0; i < indent; i++) { ident += indentString; }
+			string ident2 = ident + indentString;
+			string ident3 = ident2 + indentString;
+			string kind = type.ToString();
+			str.Append($"\n{ident}Node {kind} {(hasSrcLineCol ? srcLineCol : "")}");
+
+			if (dataMap != null) {
+				str.Append($"\n{ident2}DataMap:");
+				foreach (var pair in dataMap) {
+					str.Append($"\n{ident3}{pair.Key}: {pair.Value}");
+				}
+			}
+
+			if (datas != null) {
+				str.Append($"\n{ident2}DataList: [");
+
+				for (int i = 0; i < datas.Count; i++) {
+					str.Append(i > 0 ? ", " : "");
+					str.Append(datas[i]);
+				}
+
+				str.Append("]");
+			}
+
+			if (nodeMap != null) {
+				str.Append($"\n{ident2}NodeMap: ");
+
+				foreach (var pair in nodeMap) {
+					str.Append($"\n{ident3}{kind} @ {pair.Key}: {pair.Value.ToString(indent + 1, indentString)}");
+				}
+
+			}
+
+			if (nodes != null) {
+				str.Append($"\n{ident2} NodeList:");
+
+				for (int i = 0; i < nodes.Count; i++) {
+					str.Append($"\n{ident3}{kind} # {i}: {nodes[i].ToString(indent + 1, indentString)}");
+				}
+			}
+
+			return str.ToString();
+		}
 	}
 
 

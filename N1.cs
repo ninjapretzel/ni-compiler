@@ -15,41 +15,41 @@ namespace ni_compiler {
 			Int, Read, Negate, Add,
 			Var, Let
 		}
-		public static Node Int(int val) {
-			Node n = new Node(N1.Int.Ord());
+		public static Node<N1> Int(int val) {
+			Node<N1> n = new Node<N1>(N1.Int);
 			n.List(val.ToString());
 			return n;
 		}
-		public static Node Negate(Node inner) {
-			Node n = new Node(N1.Negate.Ord());
+		public static Node<N1> Negate(Node<N1> inner) {
+			Node<N1> n = new Node<N1>(N1.Negate);
 			n.List(inner);
 			return n;
 		}
-		public static Node Add(Node a, Node b) {
-			Node n = new Node(N1.Add.Ord());
+		public static Node<N1> Add(Node<N1> a, Node<N1> b) {
+			Node<N1> n = new Node<N1>(N1.Add);
 			n.List(a);
 			n.List(b);
 			return n;
 		}
-		public static Node Read() { return new Node(N1.Read.Ord()); }
-		public static Node Var(string sym) {
-			Node n = new Node(N1.Var.Ord());
+		public static Node<N1> Read() { return new Node<N1>(N1.Read); }
+		public static Node<N1> Var(string sym) {
+			Node<N1> n = new Node<N1>(N1.Var);
 			n.List(sym);
 			return n;
 		}
-		public static Node Let(string sym, Node expr, Node body) {
-			Node n = new Node(N1.Let.Ord());
+		public static Node<N1> Let(string sym, Node<N1> expr, Node<N1> body) {
+			Node<N1> n = new Node<N1>(N1.Let);
 			n.List(sym);
 			n.List(expr);
 			n.List(body);
 			return n;
 		}
-		public static int Run(Node n) { return Interp(n); }
+		public static int Run(Node<N1> n) { return Interp(n); }
 
-		public static int Interp(Node n, Env<int> env = null) {
+		public static int Interp(Node<N1> n, Env<int> env = null) {
 			if (env == null) { env = new Env<int>(); }
 			if (n == null) { throw new Exception($"No node to execute"); }
-			N1 type = (N1)n.type;
+			N1 type = n.type;
 			switch (type) {
 				case N1.Int: return int.Parse(n.datas[0]);
 				case N1.Add: return Interp(n.nodes[0], env) + Interp(n.nodes[1], env);
@@ -66,16 +66,30 @@ namespace ni_compiler {
 			throw new Exception($"Unknown N1 Type {type}");
 		}
 
-		public static Node PartialEvaluate(Node n) {
-			switch ((N1)n.type) {
+		public static Node<N1> Explicate(Node<N1> n) {
+			(Node<N1> result, LL<string> strs) = ExplicateTail(n);
+			return result;
+		}
+		public static (Node<N1>, LL<string>) ExplicateTail(Node<N1> n) {
+			return (null, null);
+		}
+		public static (Node<N1>, LL<string>) ExplicateAssign(string name, Node<N1> expr, Node<N1> tail) {
+
+			switch (expr.type) {
+				//case N1.Int: 
+			}
+			return (null, null);
+		}
+		public static Node<N1> PartialEvaluate(Node<N1> n) {
+			switch (n.type) {
 				case N1.Int:
 				case N1.Var:
 				case N1.Read:
 					return n;
 				case N1.Add: {
-						Node a = PartialEvaluate(n.nodes[0]);
-						Node b = PartialEvaluate(n.nodes[1]);
-						if (a.type == N1.Int.Ord() && b.type == N1.Int.Ord()) {
+						Node<N1> a = PartialEvaluate(n.nodes[0]);
+						Node<N1> b = PartialEvaluate(n.nodes[1]);
+						if (a.type == N1.Int && b.type == N1.Int) {
 							int av = int.Parse(a.datas[0]);
 							int bv = int.Parse(b.datas[0]);
 							return Int(av + bv);
@@ -83,47 +97,47 @@ namespace ni_compiler {
 						return Add(a, b);
 					}
 				case N1.Negate: {
-						Node expr = PartialEvaluate(n.nodes[0]);
-						if (expr.type == N1.Int.Ord()) {
+						Node<N1> expr = PartialEvaluate(n.nodes[0]);
+						if (expr.type == N1.Int) {
 							return Int(-int.Parse(expr.datas[0]));
 						}
 						return Negate(expr);
 					}
 				case N1.Let: {
-						Node expr = PartialEvaluate(n.nodes[0]);
-						Node body = PartialEvaluate(n.nodes[1]);
+						Node<N1> expr = PartialEvaluate(n.nodes[0]);
+						Node<N1> body = PartialEvaluate(n.nodes[1]);
 						return Let(n.datas[0], expr, body);
 					}
 			}
 			throw new Exception($"Unknown N1 node type {n.type}");
 		}
 
-		public static Node Reduce(Node tree) {
-			(int k, Node res) = ReduceExp(0, tree);
+		public static Node<N1> Reduce(Node<N1> tree) {
+			(int k, Node<N1> res) = ReduceExp(0, tree);
 			return res;
 		}
-		public static Node Reduce(Node body, (string sym, Node expr) t) {
+		public static Node<N1> Reduce(Node<N1> body, (string sym, Node<N1> expr) t) {
 			return Let(t.sym, t.expr, body);
 		}
 
-		public static (int, Node) ReduceExp(int cnt, Node n) {
-			switch ((N1)n.type) {
+		public static (int, Node<N1>) ReduceExp(int cnt, Node<N1> n) {
+			switch (n.type) {
 				case N1.Int:
 				case N1.Var:
 				case N1.Read:
 					return (cnt, n);
 				case N1.Negate: {
-						(int cnt2, Node body, var bind) = ReduceAtm(cnt, n.nodes[0], null);
+						(int cnt2, Node<N1> body, var bind) = ReduceAtm(cnt, n.nodes[0], null);
 						return (cnt2, bind.FoldL(Reduce, Negate(body)));
 					}
 				case N1.Add: {
-						(int cnt2, Node bodya, var binda) = ReduceAtm(cnt, n.nodes[0], null);
-						(int cnt3, Node bodyb, var bindb) = ReduceAtm(cnt2, n.nodes[1], binda);
+						(int cnt2, Node<N1> bodya, var binda) = ReduceAtm(cnt, n.nodes[0], null);
+						(int cnt3, Node<N1> bodyb, var bindb) = ReduceAtm(cnt2, n.nodes[1], binda);
 						return (cnt3, bindb.FoldL(Reduce, Add(bodya, bodyb)));
 					}
 				case N1.Let: {
-						(int cnt2, Node expr) = ReduceExp(cnt, n.nodes[0]);
-						(int cnt3, Node body) = ReduceExp(cnt2, n.nodes[1]);
+						(int cnt2, Node<N1> expr) = ReduceExp(cnt, n.nodes[0]);
+						(int cnt3, Node<N1> body) = ReduceExp(cnt2, n.nodes[1]);
 						return (cnt3, Let(n.datas[0], expr, body));
 					}
 			}
@@ -132,34 +146,34 @@ namespace ni_compiler {
 		}
 
 
-		public static (int, Node, LL<(string, Node)>) ReduceAtm(int cnt, Node n, LL<(string, Node)> bindings = null) {
-			// if (bindings == null) { bindings = new LL<(string, Node)>(); }
+		public static (int, Node<N1>, LL<(string, Node<N1>)>) ReduceAtm(int cnt, Node<N1> n, LL<(string, Node<N1>)> bindings = null) {
+			// if (bindings == null) { bindings = new LL<(string, Node<N1>)>(); }
 
-			switch ((N1)n.type) {
+			switch (n.type) {
 				case N1.Int:
 				case N1.Var:
 				case N1.Read:
 					return (cnt, n, bindings);
 				case N1.Negate: {
-						Node inner = n.nodes[0];
-						(int cnt2, Node expr, var binds) = ReduceAtm(cnt, inner, bindings);
+						Node<N1> inner = n.nodes[0];
+						(int cnt2, Node<N1> expr, var binds) = ReduceAtm(cnt, inner, bindings);
 						string newName = $"s{cnt2}";
 						return (cnt2 + 1, Var(newName), binds.Add((newName, Negate(expr))));
 					}
 				case N1.Add: {
-						Node innerA = n.nodes[0];
-						Node innerB = n.nodes[1];
-						(int cnt2, Node exprA, var bas) = ReduceAtm(cnt, innerA, bindings);
-						(int cnt3, Node exprB, var bbs) = ReduceAtm(cnt2, innerB, bas);
+						Node<N1> innerA = n.nodes[0];
+						Node<N1> innerB = n.nodes[1];
+						(int cnt2, Node<N1> exprA, var bas) = ReduceAtm(cnt, innerA, bindings);
+						(int cnt3, Node<N1> exprB, var bbs) = ReduceAtm(cnt2, innerB, bas);
 						string newName = $"s{cnt3}";
 						return (cnt3 + 1, Var(newName), bbs.Add((newName, Add(exprA, exprB))));
 					}
 				case N1.Let: {
-						Node exp = n.nodes[0];
-						Node body = n.nodes[1];
+						Node<N1> exp = n.nodes[0];
+						Node<N1> body = n.nodes[1];
 						string sym = n.datas[0];
-						(int cnt2, Node exp2) = ReduceExp(cnt, exp);
-						(int cnt3, Node body2) = ReduceExp(cnt2, body);
+						(int cnt2, Node<N1> exp2) = ReduceExp(cnt, exp);
+						(int cnt3, Node<N1> body2) = ReduceExp(cnt2, body);
 						string newName = $"s{cnt3}";
 						var binding = (newName, Let(sym, exp2, body2));
 						return (cnt3 + 1, Var(newName), bindings.Add(binding));
@@ -169,13 +183,13 @@ namespace ni_compiler {
 			throw new Exception($"Unknown N1 node type {n.type}");
 		}
 
-		public static Node Uniquify(Node tree) {
-			(_, _, Node res) = Uniquify(0, new Env<string>(), tree);
+		public static Node<N1> Uniquify(Node<N1> tree) {
+			(_, _, Node<N1> res) = Uniquify(0, new Env<string>(), tree);
 			return res;
 		}
 
-		public static (int, Env<string>, Node) Uniquify(int cnt, Env<string> env, Node n) {
-			switch ((N1)n.type) {
+		public static (int, Env<string>, Node<N1>) Uniquify(int cnt, Env<string> env, Node<N1> n) {
+			switch (n.type) {
 				case N1.Int:
 				case N1.Read:
 					return (cnt, env, n);
@@ -185,20 +199,20 @@ namespace ni_compiler {
 						return (cnt, env, Var(name));
 					}
 				case N1.Negate: {
-						(int cnt2, var env2, Node expr) = Uniquify(cnt, env, n.nodes[0]);
+						(int cnt2, var env2, Node<N1> expr) = Uniquify(cnt, env, n.nodes[0]);
 						return (cnt2, env2, Negate(expr));
 					}
 				case N1.Add: {
-						(int cnta, var env2, Node a) = Uniquify(cnt, env, n.nodes[0]);
-						(int cntb, var env3, Node b) = Uniquify(cnta, env2, n.nodes[1]);
+						(int cnta, var env2, Node<N1> a) = Uniquify(cnt, env, n.nodes[0]);
+						(int cntb, var env3, Node<N1> b) = Uniquify(cnta, env2, n.nodes[1]);
 						return (cntb, env3, Add(a, b));
 					}
 				case N1.Let: {
-						(int cnta, var env2, Node expr) = Uniquify(cnt, env, n.nodes[0]);
+						(int cnta, var env2, Node<N1> expr) = Uniquify(cnt, env, n.nodes[0]);
 						string newName = "s" + cnt;
 						string sym = n.datas[0];
 						Env<string> newEnv = env.Extend(sym, newName);
-						(int cntb, var env3, Node body) = Uniquify(cnt + 1, newEnv, n.nodes[1]);
+						(int cntb, var env3, Node<N1> body) = Uniquify(cnt + 1, newEnv, n.nodes[1]);
 						return (cntb, env3, Let(newName, expr, body));
 					}
 			}
@@ -221,6 +235,10 @@ in
 	y
 end";
 			static string badprog = @"let ni omg is wtf in bbq gtfo";
+			static string verticalSlice = @"
+
+
+";
 			public static void TestTokenize() {
 				Tokenizer tok = new Tokenizer(prog);
 				Token t;
@@ -254,21 +272,21 @@ end";
 			
 			public static void TestParser() {
 				Tokenizer tok = new Tokenizer(prog);
-				Node parsed = tok.ParseExpression();
+				Node<N1> parsed = tok.ParseExpression();
 
-				parsed.type.ShouldBe(N1.Let.Ord());
+				parsed.type.ShouldBe(N1.Let);
 				parsed.datas[0].ShouldBe("y");
-				parsed.nodes[0].type.ShouldBe(N1.Let.Ord());
-				parsed.nodes[0].nodes[0].type.ShouldBe(N1.Int.Ord());
-				parsed.nodes[0].nodes[1].type.ShouldBe(N1.Add.Ord());
-				parsed.nodes[0].nodes[1].nodes[0].type.ShouldBe(N1.Var.Ord());
-				parsed.nodes[0].nodes[1].nodes[1].type.ShouldBe(N1.Let.Ord());
+				parsed.nodes[0].type.ShouldBe(N1.Let);
+				parsed.nodes[0].nodes[0].type.ShouldBe(N1.Int);
+				parsed.nodes[0].nodes[1].type.ShouldBe(N1.Add);
+				parsed.nodes[0].nodes[1].nodes[0].type.ShouldBe(N1.Var);
+				parsed.nodes[0].nodes[1].nodes[1].type.ShouldBe(N1.Let);
 
-				parsed.nodes[1].type.ShouldBe(N1.Var.Ord());
+				parsed.nodes[1].type.ShouldBe(N1.Var);
 
 				try {
 					Tokenizer badTok = new Tokenizer(badprog);
-					Node failed = badTok.ParseExpression();
+					Node<N1> failed = badTok.ParseExpression();
 				} catch (Exception e) {
 					e.Message.Contains("line 1").ShouldBeTrue();
 					e.Message.Contains("Expected: [end]").ShouldBeTrue();
@@ -277,16 +295,16 @@ end";
 			}
 			/// <summary> Test cases from professor </summary>
 			public static void TestUniquify() {
-				void Verify(string note, Node a, Node b) {
+				void Verify(string note, Node<N1> a, Node<N1> b) {
 					try {
-						Node uniqued = Uniquify(a);
+						Node<N1> uniqued = Uniquify(a);
 						uniqued.ShouldEqual(b);
 					} catch (Exception e) { throw new Exception("Failed to verify: " + note, e); }
 				}
-				void ShouldThrow(string note, Node a, string submsg) {
+				void ShouldThrow(string note, Node<N1> a, string submsg) {
 					Exception c = null;
 					try {
-						Node uniqued = Uniquify(a);
+						Node<N1> uniqued = Uniquify(a);
 					} catch (Exception e) { c = e; }
 					c.ShouldNotBe(null);
 					c.Message.IndexOf(submsg).ShouldNotBe(-1);
@@ -324,9 +342,9 @@ end";
 			}
 			/// <summary> Test cases from professor </summary>
 			public static void TestReduceComplex() {
-				void Verify(string note, Node a, Node b) {
+				void Verify(string note, Node<N1> a, Node<N1> b) {
 					try {
-						Node reduced = Reduce(a);
+						Node<N1> reduced = Reduce(a);
 						reduced.ShouldEqual(b);
 					} catch (Exception e) { throw new Exception("Failed to verify: " + note, e); }
 				}
@@ -401,7 +419,7 @@ end";
 			}
 
 			public static void TestTransformationsPreserveResults() {
-				Node program = Let("x",
+				Node<N1> program = Let("x",
 					Negate(
 						Add(Int(10), Int(30)) // x = -40
 					),
@@ -414,29 +432,29 @@ end";
 				int result1 = Run(program);
 				result1.ShouldBe(expected1);
 				
-				Node reduced = Reduce(program);
+				Node<N1> reduced = Reduce(program);
 
 				int result2 = Run(reduced);
 				result2.ShouldBe(expected1);
 				
-				Node pevaled = PartialEvaluate(program);
+				Node<N1> pevaled = PartialEvaluate(program);
 
 				int result3 = Run(pevaled);
 				result3.ShouldBe(expected1);
 				
-				Node pevaledAndReduced = Reduce(pevaled);
+				Node<N1> pevaledAndReduced = Reduce(pevaled);
 
 				int result4 = Run(pevaledAndReduced);
 				result4.ShouldBe(expected1);
 				
-				Node reducedAndUniqued = Uniquify(reduced);
+				Node<N1> reducedAndUniqued = Uniquify(reduced);
 				int result5 = Run(reducedAndUniqued);
 				result5.ShouldBe(expected1);
 				
 			}
 			
 			public static void TestReduction() {
-				Node pg = Add(  // (-(-(5)) + (let x=6,y=6 in x+y)
+				Node<N1> pg = Add(  // (-(-(5)) + (let x=6,y=6 in x+y)
 					Int(5),
 					Let("x", Int(6),
 						Let("y", Int(6),//lets are complex inners, and need to be reduced
@@ -446,15 +464,15 @@ end";
 				);
 
 				int expected = 17;
-				Node pgreduced = Reduce(pg);
-				pgreduced.type.ShouldBe(N1.Let.Ord()); // A Let should be promoted to the top
+				Node<N1> pgreduced = Reduce(pg);
+				pgreduced.type.ShouldBe(N1.Let); // A Let should be promoted to the top
 
 				int result1 = Run(pg);
 				int result2 = Run(pgreduced);
 				result1.ShouldBe(expected);
 				result2.ShouldBe(expected);
 
-				Node pg2 = Add(  // (-(-5) + (let x=6,y=6 in x+y)
+				Node<N1> pg2 = Add(  // (-(-5) + (let x=6,y=6 in x+y)
 					Negate(Int(-5)),
 					Let("x", Int(6),
 						Let("y", Int(6),//lets are complex inners, and need to be reduced
@@ -463,13 +481,13 @@ end";
 					)
 				);
 
-				Node pg2Reduced = Reduce(pg2);
+				Node<N1> pg2Reduced = Reduce(pg2);
 				int result3 = Run(pg2Reduced);
 				result3.ShouldBe(expected);
 				//Log.Info(pg2Reduced.ToString<N1>());
 				
 
-				Node pg3 = Add(  // (-(-(5)) + (let x=6,y=6 in x+y)
+				Node<N1> pg3 = Add(  // (-(-(5)) + (let x=6,y=6 in x+y)
 					Negate(Negate(Int(5))),
 					Let("x", Int(6),
 						Let("y", Int(6),//lets are complex inners, and need to be reduced
@@ -478,7 +496,7 @@ end";
 					)
 				);
 
-				Node pg3Reduced = Reduce(pg3);
+				Node<N1> pg3Reduced = Reduce(pg3);
 				//Log.Info(pg3Reduced.ToString<N1>());
 				int result4 = Run(pg3Reduced);
 
@@ -523,30 +541,30 @@ end";
 		public static readonly Regex num = new Regex(numRegex);
 
 
-		public static Node ParseProgram(this Tokenizer tok) {
+		public static Node<N1> ParseProgram(this Tokenizer tok) {
 			return tok.ParseExpression();
 		}
 
 		public static string[] LEAFS = { "!NAME", "!NUM", "read" };
 
-		public static Node ParseExpression(this Tokenizer tok) {
+		public static Node<N1> ParseExpression(this Tokenizer tok) {
 			if (tok.At("let")) { return tok.ParseLet(); }
 			if (tok.At("(")) {
 				tok.Next();
-				Node inner = tok.ParseExpression();
+				Node<N1> inner = tok.ParseExpression();
 				tok.RequireNext(")");
 				return inner;
 			}
 			if (tok.At("-")) {
 				tok.Next();
-				Node negate = new Node(N1.Negate.Ord());
-				Node expr = tok.ParseExpression();
+				Node<N1> negate = new Node<N1>(N1.Negate);
+				Node<N1> expr = tok.ParseExpression();
 				negate.List(expr);
 				return negate;
 
 			}
 			if (tok.At(LEAFS)) {
-				Node leaf = tok.ParseLeaf();
+				Node<N1> leaf = tok.ParseLeaf();
 				if (tok.At("+")) {
 					tok.Next();
 					return Add(leaf, tok.ParseExpression());
@@ -558,25 +576,25 @@ end";
 			tok.Error($"Unknown start of expression {tok.peekToken}");
 			return null;
 		}
-		public static Node ParseLeaf(this Tokenizer tok) {
+		public static Node<N1> ParseLeaf(this Tokenizer tok) {
 			if (tok.At("!NAME")) {
-				Node var = new Node(N1.Var.Ord());
+				Node<N1> var = new Node<N1>(N1.Var);
 				var.List(tok.Next());
 				return var;
 			}
 			if (tok.At("!NUM")) {
-				Node num = new Node(N1.Int.Ord());
+				Node<N1> num = new Node<N1>(N1.Int);
 				num.List(tok.Next());
 				return num;
 			}
 			if (tok.At("read")) {
-				return new Node(N1.Read.Ord());
+				return new Node<N1>(N1.Read);
 			}
 			tok.Error("Unknown leaf value token");
 			return null;
 		}
 
-		public static Node ParseLet(this Tokenizer tok) {
+		public static Node<N1> ParseLet(this Tokenizer tok) {
 			tok.RequireNext("let");
 			tok.RequireNext("ni");
 			tok.Require("!NAME");
@@ -584,12 +602,12 @@ end";
 			Token name = tok.peekToken; tok.Next();
 			tok.RequireNext("is");
 
-			Node value = tok.ParseExpression();
+			Node<N1> value = tok.ParseExpression();
 			tok.RequireNext("in");
-			Node expr = tok.ParseExpression();
+			Node<N1> expr = tok.ParseExpression();
 			tok.RequireNext("end");
 			
-			Node let = new Node(N1.Let.Ord());
+			Node<N1> let = new Node<N1>(N1.Let);
 			let.List(name);
 			let.List(value);
 			let.List(expr);

@@ -10,7 +10,7 @@ namespace ni_compiler {
 	public class C0Lang {
 		public class _Tests {
 			public static void TestBasicProgram() {
-				Node program =
+				Node<C0> program =
 					Seq(Assign("x", Int(5)),
 					Seq(Assign("nx", Sub(Var("x"))),
 					Return(Add(Var("nx"), Int(120)))
@@ -31,52 +31,52 @@ namespace ni_compiler {
 			Assign,
 			Return, Seq
 		}
-		public static Node Int(int val) {
-			Node n = new Node(C0.Int.Ord());
+		public static Node<C0> Int(int val) {
+			Node<C0> n = new Node<C0>(C0.Int);
 			n.List(val.ToString());
 			return n;
 		}
-		public static Node Var(string name) {
-			Node n = new Node(C0.Var.Ord());
+		public static Node<C0> Var(string name) {
+			Node<C0> n = new Node<C0>(C0.Var);
 			n.List(name);
 			return n;
 		}
-		public static Node Atm(Node atom) {
-			Node n = new Node(C0.Atm.Ord());
+		public static Node<C0> Atm(Node<C0> atom) {
+			Node<C0> n = new Node<C0>(C0.Atm);
 			n.List(atom);
 			return n;
 		}
-		public static Node Sub(Node inner) {
-			Node n = new Node(C0.Sub.Ord());
+		public static Node<C0> Sub(Node<C0> inner) {
+			Node<C0> n = new Node<C0>(C0.Sub);
 			n.List(inner);
 			return n;
 		}
-		public static Node Read() { return new Node(C0.Read.Ord()); }
-		public static Node Add(Node a, Node b) {
-			Node n = new Node(C0.Sub.Ord());
+		public static Node<C0> Read() { return new Node<C0>(C0.Read); }
+		public static Node<C0> Add(Node<C0> a, Node<C0> b) {
+			Node<C0> n = new Node<C0>(C0.Sub);
 			n.List(a);
 			n.List(b);
 			return n;
 		}
-		public static Node Assign(string name, Node exp) {
-			Node n = new Node(C0.Assign.Ord());
+		public static Node<C0> Assign(string name, Node<C0> exp) {
+			Node<C0> n = new Node<C0>(C0.Assign);
 			n.List(name);
 			n.List(exp);
 			return n;
 		}
-		public static Node Return(Node exp) {
-			Node n = new Node(C0.Return.Ord());
+		public static Node<C0> Return(Node<C0> exp) {
+			Node<C0> n = new Node<C0>(C0.Return);
 			n.List(exp);
 			return n;
 		}
-		public static Node Seq(Node stmt, Node tail) {
-			Node n = new Node(C0.Return.Ord());
+		public static Node<C0> Seq(Node<C0> stmt, Node<C0> tail) {
+			Node<C0> n = new Node<C0>(C0.Return);
 			n.List(stmt);
 			n.List(tail);
 			return n;
 		}
 
-		public static (int, Env<int>) Interp(Node n, Env<int> env) {
+		public static (int, Env<int>) Interp(Node<C0> n, Env<int> env) {
 			C0 type = (C0)n.type;
 			switch (type) {
 				case C0.Int: return (int.Parse(n.datas[0]), env);
