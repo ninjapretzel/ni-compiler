@@ -6,11 +6,13 @@ using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using static ni_compiler.C0Lang;
 
 namespace ni_compiler {
 
 	public static class N1Lang {
 
+		#region Node Types
 		public enum N1 : int {
 			Int, Read, Negate, Add,
 			Var, Let
@@ -44,6 +46,9 @@ namespace ni_compiler {
 			n.List(body);
 			return n;
 		}
+		#endregion
+
+		#region Interpreter
 		public static int Run(Node<N1> n) { return Interp(n); }
 
 		public static int Interp(Node<N1> n, Env<int> env = null) {
@@ -65,21 +70,57 @@ namespace ni_compiler {
 			}
 			throw new Exception($"Unknown N1 Type {type}");
 		}
+		#endregion
 
-		public static Node<N1> Explicate(Node<N1> n) {
-			(Node<N1> result, LL<string> strs) = ExplicateTail(n);
-			return result;
+		#region PASS: Explicate Control
+		public static (Node<C0>, LL<string>) Explicate(Node<N1> n) {
+			return ExplicateTail(n);
 		}
-		public static (Node<N1>, LL<string>) ExplicateTail(Node<N1> n) {
-			return (null, null);
-		}
-		public static (Node<N1>, LL<string>) ExplicateAssign(string name, Node<N1> expr, Node<N1> tail) {
 
-			switch (expr.type) {
-				//case N1.Int: 
+		public static (Node<C0>, LL<string>) ExplicateTail(Node<N1> n) {
+			switch (n.type) {
+				case N1.Int: 
+				case N1.Var: 
+					return (Return(Atm(n.ToC0Expr())), null);
+				case N1.Read:
+				case N1.Negate:
+				case N1.Add:
+					return (Return(n.ToC0Expr()), null);
+				case N1.Let: {
+					(var tail, var tailNames) = ExplicateTail(n.nodes[1]);
+					(var assign, var exprNames) = ExplicateAssign(n.datas[0], n.nodes[0], tail);
+					return (assign, tailNames + exprNames);
+				}
+					
 			}
 			return (null, null);
 		}
+		public static int Num(this string s) { return int.Parse(s);	}
+		public static Node<C0> ToC0Expr(this Node<N1> n) {
+			switch (n.type) {
+				case N1.Int: return C0Lang.Int(n.datas[0].Num());
+				case N1.Var: return C0Lang.Var(n.datas[0]);
+				case N1.Negate: return C0Lang.Sub(n.nodes[0].ToC0Expr());
+				case N1.Add: return C0Lang.Add(n.nodes[0].ToC0Expr(), n.nodes[1].ToC0Expr());
+				case N1.Read: return C0Lang.Read();
+			}
+			return null;
+		}
+		public static (Node<C0>, LL<string>) ExplicateAssign(string name, Node<N1> expr, Node<C0> tail) {
+			if (expr.type == N1.Let) {
+				(var seq2, var tailNames) = ExplicateAssign(name, expr.nodes[1], tail);
+				(var res, var exprNames) = ExplicateAssign(expr.datas[0], expr.nodes[0], seq2);
+				return (res, exprNames+tailNames);
+			} 
+			var c0 = expr.ToC0Expr();
+			if (c0.type == C0.Int || c0.type == C0.Var) {
+				c0 = Atm(c0);
+			}
+			return (Seq(Assign(name, c0), tail), new LL<string>(name));
+		}
+		#endregion
+
+		#region PASS: Partial Evaluation
 		public static Node<N1> PartialEvaluate(Node<N1> n) {
 			switch (n.type) {
 				case N1.Int:
@@ -111,7 +152,9 @@ namespace ni_compiler {
 			}
 			throw new Exception($"Unknown N1 node type {n.type}");
 		}
+		#endregion
 
+		#region PASS: Reduce Complex Expressions
 		public static Node<N1> Reduce(Node<N1> tree) {
 			(int k, Node<N1> res) = ReduceExp(0, tree);
 			return res;
@@ -182,7 +225,9 @@ namespace ni_compiler {
 
 			throw new Exception($"Unknown N1 node type {n.type}");
 		}
+		#endregion
 
+		#region PASS: Uniquify Variable Names
 		public static Node<N1> Uniquify(Node<N1> tree) {
 			(_, _, Node<N1> res) = Uniquify(0, new Env<string>(), tree);
 			return res;
@@ -218,7 +263,9 @@ namespace ni_compiler {
 			}
 			throw new Exception($"Unknown N1 node type {n.type}");
 		}
+		#endregion
 
+		#region TESTS
 		public class _Tests {
 			static string prog = 
 @"let ni 
@@ -234,11 +281,54 @@ is
 in 
 	y
 end";
+
+			static string prog2 = 
+@"let ni y is 
+	let ni b is
+		let ni z is
+			20
+		in
+			z
+		end
+	in
+		let ni a is
+			22
+		in
+			a + b
+		end
+	end
+in
+	y
+end";
 			static string badprog = @"let ni omg is wtf in bbq gtfo";
 			static string verticalSlice = @"
 
 
 ";
+			public static void TestExplicate() {
+				var prog = 
+				Let("y", 
+					Let("x1", 
+						Int(20), 
+						Let("x2", 
+							Int(22),
+							Add(Var("x1"), Var("x2"))
+						)
+					),
+					Var("y")
+				);
+				(var res, var names) = Explicate(prog);
+				var expected = 
+				Seq(Assign("x1", Atm(C0Lang.Int(20))),
+				Seq(Assign("x2", Atm(C0Lang.Int(22))),
+				Seq(Assign("y", C0Lang.Add(C0Lang.Var("x1"), C0Lang.Var("x2"))),
+				Return(Atm(C0Lang.Var("y"))))));
+
+				res.ShouldEqual(expected);
+
+				names.ShouldEqual(LL<string>.From("x1", "x2", "y"));
+			}
+
 			public static void TestTokenize() {
 				Tokenizer tok = new Tokenizer(prog);
 				Token t;
@@ -503,7 +593,9 @@ end";
 			}
 			
 		}
+		#endregion
 
+		#region Parser
 		/// <summary> Impossible token representing type for names </summary>
 		public const string NAME = "!NAME";
 		/// <summary> Impossible token representing type for numbers </summary>
@@ -579,12 +671,14 @@ end";
 		public static Node<N1> ParseLeaf(this Tokenizer tok) {
 			if (tok.At("!NAME")) {
 				Node<N1> var = new Node<N1>(N1.Var);
-				var.List(tok.Next());
+				var.List(tok.peekToken);
+				tok.Next();
 				return var;
 			}
 			if (tok.At("!NUM")) {
 				Node<N1> num = new Node<N1>(N1.Int);
-				num.List(tok.Next());
+				num.List(tok.peekToken);
+				tok.Next();
 				return num;
 			}
 			if (tok.At("read")) {
@@ -613,7 +707,9 @@ end";
 			let.List(expr);
 			return let;
 		}
+		#endregion
 
+		#region Tokenizer
 		/// <summary> Represents a stream of tokens coming from a loaded script </summary>
 		public class Tokenizer {
 
@@ -803,7 +899,9 @@ end";
 			}
 
 		}
+		#endregion
+
 	}
-	
+
 
 }
