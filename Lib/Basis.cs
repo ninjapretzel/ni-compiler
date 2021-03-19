@@ -10,10 +10,18 @@ namespace ni_compiler {
 	/// <summary> Basic singly linked list node type. </summary>
 	/// <typeparam name="T"> Generic content type </typeparam>
 	public class LL<T> : IEnumerable<T> {
+		public static LL<T> From(params T[] values) {
+			LL<T> acc = null;
+			for (int i = values.Length - 1; i >= 0; i--) {
+				acc = acc.Add(values[i]);
+			}
+			return acc;
+		}
 		/// <summary> Current data </summary>
 		public T data;
 		/// <summary> Link to next node </summary>
 		public LL<T> next;
+
 
 		/// <summary> Construct a new node with the given data/next link </summary>
 		/// <param name="data"> data item to store </param>
@@ -26,20 +34,53 @@ namespace ni_compiler {
 		IEnumerator IEnumerable.GetEnumerator() { return new Enumerator(this); }
 
 		public class Enumerator : IEnumerator<T> {
-			public Enumerator(LL<T> start) { this.start = start; }
+			public Enumerator(LL<T> start) { this.start = start; first = true; }
 			private LL<T> start;
 			private LL<T> cur;
+			private bool first = true;
 			public T Current { get { return cur.data; } }
 			object IEnumerator.Current { get { return cur.data; } }
 			public void Dispose() { }
 			public void Reset() { cur = start; }
 			public bool MoveNext() { 
+				if (first) { cur = start; first = false; return true; }
+				if (cur == null) { return false; }
 				if (cur.next != null) {
 					cur = cur.next;
 					return true;
 				}
 				return false;
 			}
+		}
+		public override bool Equals(object obj) {
+			if (obj is LL<T> other) {
+				if (next == null && other.next == null) {
+					return data.Equals(other.data);
+				}
+				return next.Equals(other.next);
+			}
+			return false;
+		}
+		public override int GetHashCode() {
+			return base.GetHashCode();
+		}
+		public override string ToString() {
+			StringBuilder str = new StringBuilder("[ ");
+			
+			foreach (var item in this) {
+				str.Append(item.ToString());
+				str.Append(", ");
+			}
+			
+			str.Append(" ]");
+			return str.ToString();
+		}
+		/// <summary> Append lists using + operator </summary>
+		/// <param name="left"> Left list (left side of data) </param>
+		/// <param name="right"> Right list (right side of data) </param>
+		/// <returns> Combined list: (left0, left1, ..., leftn, right0, right1, ..., rightn)  </returns>
+		public static LL<T> operator +(LL<T> left, LL<T> right) {
+			return LLExt.Append(left, right);
 		}
 	}
 	/// <summary> Extension methods for <see cref="LL{T}"/> so that calling them on null is valid. </summary>
@@ -52,6 +93,46 @@ namespace ni_compiler {
 		public static LL<T> Add<T>(this LL<T> list, T val) {
 			return new LL<T>(val, list);
 		}
+		/// <summary> Creates a reversed copy of the given list </summary>
+		/// <typeparam name="T"> Generic content type </typeparam>
+		/// <param name="list"> List to reverse </param>
+		/// <returns> Reversed verison of given list </returns>
+		public static LL<T> Reverse<T>(this LL<T> list) {
+			if (list == null) { return null; }
+			LL<T> acc = null;
+			foreach (var item in list) { 
+				acc = acc.Add(item); 
+			}
+			return acc;
+		}
+
+		/// <summary> Append lists </summary>
+		/// <param name="left"> Left list (left side of data) </param>
+		/// <param name="right"> Right list (right side of data) </param>
+		/// <returns> Combined list: (left0, left1, ..., leftn, right0, right1, ..., rightn)  </returns>
+		public static LL<T> Append<T>(this LL<T> left, LL<T> right) {
+			LL<T> acc = null;
+			Stack<LL<T>> nodes = new Stack<LL<T>>();
+			if (left != null) {
+				foreach (var item in left) {
+					nodes.Push(new LL<T>(item));
+				}
+			}
+			if (right != null) {
+				foreach (var item in right) {
+					nodes.Push(new LL<T>(item));
+				}
+			}
+			while (nodes.Count > 0) {
+				var popped = nodes.Pop();
+				popped.next = acc;
+				acc = popped;
+			}
+
+
+			return acc;
+		}
+		
 		/// <summary> Fold a list from "Right to left" </summary>
 		/// <typeparam name="T"> Generic content type </typeparam>
 		/// <typeparam name="R"> Generic result type </typeparam>
