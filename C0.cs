@@ -11,25 +11,25 @@ namespace ni_compiler {
 		public class _Tests {
 			public static void TestBasicProgram() {
 				Node<C0> program =
-					Seq(Assign("x", Int(5)),
+					Seq(Assign("x", Atm(Int(5))),
 					Seq(Assign("nx", Sub(Var("x"))),
 					Return(Add(Var("nx"), Int(120)))
 				));
 
-
-				// Console.WriteLine($"Interpreting C0 program {program.ToString<C0>()}");
 				(int result, Env<int> final) = Interp(program, new Env<int>());
 
-				result.ShouldBe(5);
-				//Console.WriteLine($"Got result {result} / Env<int> {final}");
+				result.ShouldBe(115);
 			}
 
 		}
 		public enum C0 : int {
-			Int, Var,
-			Atm, Read, Sub, Add,
-			Assign,
-			Return, Seq
+			Int, Var, // Atomics
+			Atm, // expr, Atomic wrapper
+			Read, // expr, Expression
+			Sub, // expr, -(atomic)
+			Add, // expr, (atomic + atomic)
+			Assign, // stmt, name = expr
+			Return, Seq // Tail
 		}
 		public static Node<C0> Int(int val) {
 			Node<C0> n = new Node<C0>(C0.Int);
@@ -53,7 +53,7 @@ namespace ni_compiler {
 		}
 		public static Node<C0> Read() { return new Node<C0>(C0.Read); }
 		public static Node<C0> Add(Node<C0> a, Node<C0> b) {
-			Node<C0> n = new Node<C0>(C0.Sub);
+			Node<C0> n = new Node<C0>(C0.Add);
 			n.List(a);
 			n.List(b);
 			return n;
@@ -70,12 +70,11 @@ namespace ni_compiler {
 			return n;
 		}
 		public static Node<C0> Seq(Node<C0> stmt, Node<C0> tail) {
-			Node<C0> n = new Node<C0>(C0.Return);
+			Node<C0> n = new Node<C0>(C0.Seq);
 			n.List(stmt);
 			n.List(tail);
 			return n;
 		}
-
 		public static (int, Env<int>) Interp(Node<C0> n, Env<int> env) {
 			C0 type = (C0)n.type;
 			switch (type) {
