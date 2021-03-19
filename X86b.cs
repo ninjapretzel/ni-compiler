@@ -1,12 +1,54 @@
-﻿using System;
+﻿using BakaTest;
+using Ex;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using static ni_compiler.C0Lang;
 
 namespace ni_compiler {
 	public static class X86bLang {
 
+		public static Arg AtmToArg(Node<C0> atm) {
+			switch (atm.type) {
+				case C0.Int: { return int.Parse(atm.datas[0]); }
+				case C0.Var: { return atm.datas[0]; }
+			}
+			throw new Exception($"C0.{atm.type} is not a valid atomic type");
+		}
+
+		public static LL<Instr> SelectStmt(Node<C0> exp, Arg dest) {
+			switch (exp.type) {
+				case C0.Atm: { return new LL<Instr>(Movq(AtmToArg(exp.nodes[0]), dest)); }
+				case C0.Add: {
+					return new LL<Instr>(Addq(AtmToArg(exp.nodes[0]), dest))
+						.Add(Movq(AtmToArg(exp.nodes[1]), dest));
+				}
+				case C0.Sub: {
+					return new LL<Instr>(Negq(dest))
+						.Add(Movq(AtmToArg(exp.nodes[0]), dest));
+				}
+			}
+			throw new Exception($"C0.{exp.type} cannot be converted into a statement.");
+		}
+		public static LL<Instr> SelectTail(Node<C0> tail) {
+			switch (tail.type) {
+				case C0.Seq:{ 
+					var assign = tail.nodes[0];
+					var next = SelectTail(assign.nodes[1]);
+					var stmt = SelectStmt(assign.nodes[0], assign.datas[0]);
+					return stmt+next;
+				} 
+				case C0.Return:{
+					return new LL<Instr>(Jmpq("conclusion"))
+						.Add(Movq(AtmToArg(tail.nodes[0]), RAX));
+				}
+			}
+			throw new Exception($"C0.{tail.type} is not a tail type");
+		}
+
+		#region Definitions
 		public struct Register : IComparable<Register> {
 			public readonly string name;
 			public readonly int ord;
@@ -21,6 +63,7 @@ namespace ni_compiler {
 			public override int GetHashCode() { return name.GetHashCode() ^ ord.GetHashCode(); }
 			public static implicit operator Register((string s, int i) _) { return new Register(_.s, _.i); }
 		}
+		#region Registers
 		public static readonly Register RSP = ("%rsp", 0);
 		public static readonly Register RBP = ("%rbp", 1);
 		public static readonly Register RAX = ("%rax", 2);
@@ -37,6 +80,7 @@ namespace ni_compiler {
 		public static readonly Register R13 = ("%r13", 13);
 		public static readonly Register R14 = ("%r14", 14);
 		public static readonly Register R15 = ("%r15", 15);
+		#endregion
 
 		public class Arg : IComparable<Arg> {
 			public enum Kind { Reg, Mem, Imm, Var }
@@ -49,6 +93,7 @@ namespace ni_compiler {
 			public Arg(Register reg, long immoffset) { kind = Kind.Mem; this.reg = reg; imm = immoffset; var = null; }
 			public Arg(string var) { kind = Kind.Var; this.var = var; reg = default; imm = -1; }
 			public static implicit operator Arg(int imm) { return new Arg(imm); }
+			public static implicit operator Arg(long imm) { return new Arg(imm); }
 			public static implicit operator Arg(Register reg) { return new Arg(reg); }
 			public static implicit operator Arg((Register reg, int imm) _) { return new Arg(_.reg, _.imm); }
 			public static implicit operator Arg(string var) { return new Arg(var); }
@@ -123,6 +168,25 @@ namespace ni_compiler {
 				label = s;
 				arity = n;
 			}
+			public override bool Equals(object obj) {
+				if (obj is Instr other && kind == other.kind) {
+					if (arity != other.arity) { return false; }
+					if (label != other.label) { return false; }
+					if (arg1 != null && !arg1.Equals(other.arg1)) { return false; }
+					if (arg1 == null && other.arg1 != null) { return false; }
+					if (arg2 != null && !arg2.Equals(other.arg2)) { return false; }
+					if (arg2 == null && other.arg2 != null) { return false; }
+					return true;
+				}
+				return false;
+			}
+			public override int GetHashCode() {
+				return kind.GetHashCode()
+					^ ((arg1?.GetHashCode() ?? -1))
+					^ ((arg2?.GetHashCode() ?? -1) << 3)
+					^ ((label?.GetHashCode() ?? -1) >> 2)
+					^ (arity.GetHashCode() << 5);
+			}
 			public override string ToString() {
 				switch (kind) {
 					case Kind.Addq: return $"addq   {arg1}, {arg2}";
@@ -158,6 +222,7 @@ namespace ni_compiler {
 			foreach (var instr in b) { str.Append($"\n        {instr}"); }
 			return str.ToString();
 		}
+		
 
 		public class X86b : LL<(string label, Block block)> {
 			public X86b((string label, Block block) data, LL<(string label, Block block)> next) : base(data, next) { }
@@ -186,6 +251,15 @@ _main:
 connclusion:
 	popq   %rbp
 	retq";
+		#endregion
+
+		public static class _Tests {
+			public static void TestA() {
+				var res = SelectStmt(Atm(Int(5)), "x");
+				var expected = new LL<Instr>(Movq(5, "x"));
+				res.ShouldEqual(expected);
+			}
+		}
 
 
 	}
