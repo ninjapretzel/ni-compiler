@@ -634,8 +634,15 @@ end";
 
 				Node<N1> prog2 = Add(Add(Read(), Int(1)), Add(Read(), Int(1)));
 				var peval2 = PartialEvaluate(prog2);
-
-				Console.WriteLine(peval2);				
+				peval2.ShouldEqual(Add(Int(2), Add(Read(), Read())));
+				
+				Node<N1> prog3 = Add(Add(Read(), Int(1)), Add(Var("x"), Int(1)));
+				var peval3 = PartialEvaluate(prog3);
+				peval3.ShouldEqual(Add(Int(2), Add(Read(), Var("x"))));
+				
+				Node<N1> prog4 = Add(Add(Int(1), Var("x")), Add(Read(), Int(1)));
+				var peval4 = PartialEvaluate(prog4);
+				peval4.ShouldEqual(Add(Int(2), Add(Var("x"), Read())));
 			}
 			
 		}
