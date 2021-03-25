@@ -247,11 +247,6 @@ namespace ni_compiler {
 			}
 		}
 
-		public static Arg[] CALLER_SAVED = new Arg[] { RAX, RCX, RDX, RSI, RDI, R8, R9, R10, R11 };
-		public static Arg[] CALLEE_SAVED = new Arg[] { RSP, RBP, RBX, R12, R13, R14, R15 };
-		public static Arg[] PARAMETERS = new Arg[] { RDI, RSI, RDX, RCX, R8, R9 };
-		public static Arg[] RETURNS = new Arg[] { RAX };
-
 		public static Set<Arg> ReadSet(Instr instr) {
 			Set<Arg> s = new Set<Arg>();
 			void maybeAdd(Arg arg) {
@@ -321,6 +316,12 @@ namespace ni_compiler {
 		public static readonly Register R14 = ("%r14", 14);
 		public static readonly Register R15 = ("%r15", 15);
 		#endregion
+		
+		public static Arg[] CALLER_SAVED = new Arg[] { RAX, RCX, RDX, RSI, RDI, R8, R9, R10, R11 };
+		public static Arg[] CALLEE_SAVED = new Arg[] { RSP, RBP, RBX, R12, R13, R14, R15 };
+		public static Arg[] PARAMETERS = new Arg[] { RDI, RSI, RDX, RCX, R8, R9 };
+		public static Arg[] RETURNS = new Arg[] { RAX };
+		public static Arg[] REGISTER_PRIORITY = new Arg[] { RBX, RCX, RDX, RSI, RDI, R8, R9, R10, R11, R12, R13, R14, R15 };
 
 		public class Arg : IComparable<Arg> {
 			public enum Kind { Reg, Mem, Imm, Var }
@@ -460,7 +461,6 @@ namespace ni_compiler {
 			return str.ToString();
 		}
 		
-
 		public class X86b : LL<(string label, Block block)> {
 			public X86b((string label, Block block) data, LL<(string label, Block block)> next) : base(data, next) { }
 		}
