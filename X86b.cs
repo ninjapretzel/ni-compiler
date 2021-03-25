@@ -10,8 +10,14 @@ using static ni_compiler.C0Lang;
 namespace ni_compiler {
 	public static class X86bLang {
 
+		#region PASS: Select Instructions
+		public static (LL<Instr>, LL<string>) SIPass(Node<C0> c0, LL<string> names) {
+			return (SelectTail(c0), names);
+		}
+
 		public static Arg AtmToArg(Node<C0> atm) {
 			switch (atm.type) {
+				case C0.Atm: { return AtmToArg(atm.nodes[0]); }
 				case C0.Int: { return int.Parse(atm.datas[0]); }
 				case C0.Var: { return atm.datas[0]; }
 			}
@@ -22,8 +28,15 @@ namespace ni_compiler {
 			switch (exp.type) {
 				case C0.Atm: { return new LL<Instr>(Movq(AtmToArg(exp.nodes[0]), dest)); }
 				case C0.Add: {
-					return new LL<Instr>(Addq(AtmToArg(exp.nodes[0]), dest))
-						.Add(Movq(AtmToArg(exp.nodes[1]), dest));
+					if (exp.nodes[0].type == C0.Var && dest.kind == Arg.Kind.Var && dest.var == exp.nodes[0].datas[0]) {
+						return new LL<Instr>(Addq(AtmToArg(exp.nodes[1]), dest));
+					}
+					if (exp.nodes[1].type == C0.Var && dest.kind == Arg.Kind.Var && dest.var == exp.nodes[1].datas[0]) {
+						return new LL<Instr>(Addq(AtmToArg(exp.nodes[0]), dest));
+					}
+							
+					return new LL<Instr>(Addq(AtmToArg(exp.nodes[1]), dest))
+						.Add(Movq(AtmToArg(exp.nodes[0]), dest));
 				}
 				case C0.Sub: {
 					return new LL<Instr>(Negq(dest))
@@ -36,30 +49,105 @@ namespace ni_compiler {
 			switch (tail.type) {
 				case C0.Seq:{ 
 					var assign = tail.nodes[0];
-					var next = SelectTail(assign.nodes[1]);
+					var next = SelectTail(tail.nodes[1]);
 					var stmt = SelectStmt(assign.nodes[0], assign.datas[0]);
 					return stmt+next;
 				} 
 				case C0.Return:{
-					return new LL<Instr>(Jmpq("conclusion"))
+					// Construction of return is like Return(Atm(Int(5)))
+					return new LL<Instr>(Jmpq("conclusion")) 
 						.Add(Movq(AtmToArg(tail.nodes[0]), RAX));
 				}
 			}
 			throw new Exception($"C0.{tail.type} is not a tail type");
 		}
+		#endregion
 
+		#region PASS: Assign Homes
+		public static (LL<Instr>, Env<Arg>, int) AssignHomes(LL<Instr> instrs, LL<string> vars) {
+			var env = AssignStackLocations(vars, RBP, -8, 8);
+			int cnt = env.size;
+			return (AssignHomes(env, instrs), env, cnt);
+		}
+		public static Env<Arg> AssignStackLocations(LL<string> vars, Register reg, int offset, int size) {
+			if (vars == null) { return new Env<Arg>(); }
+			return AssignStackLocations(vars.next, reg, offset-size, size).Extend(vars.data, new Arg(reg, offset));
+		}
+		public static LL<Instr> AssignHomes(Env<Arg> env, LL<Instr> block) {
+			if (block == null) { return null; }
+			var instrs = AssignHomes(env, block.next);
+			return instrs.Add(AssignHome(env, block.data));
+		}
+		public static (int, string, char) Foo(int val) {
+			return (val * 2, ""+val, (char)val);
+		}
+
+		public static Instr AssignHome(Env<Arg> env, Instr instr) {
+			switch (instr.kind) {
+				case Instr.Kind.Jmp:
+				case Instr.Kind.Retq:
+				case Instr.Kind.Callq: return instr;
+				case Instr.Kind.Negq: return Negq(AssignHomeArg(env, instr.arg1));
+				case Instr.Kind.Popq: return Popq(AssignHomeArg(env, instr.arg1));
+				case Instr.Kind.Pushq: return Pushq(AssignHomeArg(env, instr.arg1));
+				case Instr.Kind.Addq: return Addq(AssignHomeArg(env, instr.arg1), AssignHomeArg(env, instr.arg2));
+				case Instr.Kind.Subq: return Subq(AssignHomeArg(env, instr.arg1), AssignHomeArg(env, instr.arg2));
+				case Instr.Kind.Movq: return Movq(AssignHomeArg(env, instr.arg1), AssignHomeArg(env, instr.arg2));
+			}
+			throw new Exception($"Unknown instruction {instr.kind}");
+		}
+		public static Arg AssignHomeArg(Env<Arg> env, Arg arg) {
+			switch (arg.kind) {
+				case Arg.Kind.Var: return env[arg.var];
+				default: return arg;
+			}
+		}
+		#endregion
+		#region PASS: Patch Instructions
+		public static LL<Instr> PatchInstructions(LL<Instr> instrs) {
+			return PatchBlock(instrs);
+		}
+		public static LL<Instr> PatchBlock(LL<Instr> block) {
+			if (block == null) { return null; }
+			return PatchInstr(block.data) + PatchBlock(block.next);
+
+		}
+		public static LL<Instr> PatchInstr(Instr instr) {
+			if (instr.arg1 != null && instr.arg1.kind == Arg.Kind.Mem && instr.arg2 != null && instr.arg2.kind == Arg.Kind.Mem) {
+				switch (instr.kind) {
+					case Instr.Kind.Movq: {
+						return new LL<Instr>(Movq(instr.arg1, RAX),
+								new LL<Instr>(Movq(RAX, instr.arg2)));
+					}
+					case Instr.Kind.Addq: {
+						return new LL<Instr>(Movq(instr.arg1, RAX),
+								new LL<Instr>(Addq(RAX, instr.arg2)));
+					}
+					case Instr.Kind.Subq: {
+						return new LL<Instr>(Movq(instr.arg1, RAX), 
+								new LL<Instr>(Subq(RAX, instr.arg2)));
+					}
+
+					default: throw new Exception($"{instr.kind} should not have two memory arguments!");
+				}
+			}
+			return new LL<Instr>(instr);
+		}
+
+
+
+		#endregion
 		#region Definitions
 		public struct Register : IComparable<Register> {
 			public readonly string name;
 			public readonly int ord;
 			public Register(string s, int i) { name = s; ord = i; }
-
 			public int CompareTo(Register other) { return ord.CompareTo(other.ord); }
-
 			public override bool Equals(object obj) {
 				if (obj is Register other) { return other.name == name && other.ord == ord; }
 				return false;
 			}
+			public override string ToString() { return name; }
 			public override int GetHashCode() { return name.GetHashCode() ^ ord.GetHashCode(); }
 			public static implicit operator Register((string s, int i) _) { return new Register(_.s, _.i); }
 		}
@@ -254,11 +342,128 @@ connclusion:
 		#endregion
 
 		public static class _Tests {
-			public static void TestA() {
+			public static void TestSelectIntAssign() {
 				var res = SelectStmt(Atm(Int(5)), "x");
 				var expected = new LL<Instr>(Movq(5, "x"));
 				res.ShouldEqual(expected);
 			}
+			public static void TestSelectAddAssign() {
+				var res = SelectStmt(Add(Int(3), Int(2)), "x");
+				var expected = LL<Instr>.From(Movq(3, "x"), Addq(2, "x"));
+				res.ShouldEqual(expected);
+			}
+			public static void TestSelectNegateAssign() {
+				var res = SelectStmt(Sub(Var("y")), "x");
+				var expected = LL<Instr>.From(Movq("y", "x"), Negq("x"));
+				res.ShouldEqual(expected);
+			}
+			public static void TestSelectReturn() {
+				var res = SelectTail(Return(Atm(Int(5))));
+				var expected = LL<Instr>.From(Movq(5, RAX), Jmpq("conclusion"));
+				res.ShouldEqual(expected);
+				var res2 = SelectTail(Return(Atm(Var("x"))));
+				var expected2 = LL<Instr>.From(Movq(new Arg("x"), RAX), Jmpq("conclusion"));
+				res2.ShouldEqual(expected2);
+			}
+
+			public static Node<C0> c0prog = Seq(
+				Assign("x", Add(Int(3), Int(2))), 
+				Seq(
+					Assign("y", Atm(Int(6))),
+					Seq(
+						Assign("z", Add(Var("x"), Var("y"))),
+						Return(Atm(Var("z")))
+					)
+				)
+			);
+			public static Node<C0> c0prog2 = Seq(
+				Assign("x", Add(Int(5), Int(2))),
+				Seq(
+					Assign("x", Add(Var("x"), Int(10))),
+					Seq(
+						Assign("x", Add(Int(10), Var("x"))),
+						Seq(
+							Assign("x", Add(Var("x"), Var("x"))),
+							Return(Atm(Var("x")))
+						)
+					)
+				)
+			);
+
+			public static void TestSelectPass() {
+				var instrs = SelectTail(c0prog);
+				var expected = LL<Instr>.From(
+					Movq(3, "x"),
+					Addq(2, "x"),
+					Movq(6, "y"),
+					Movq("x", "z"),
+					Addq("y", "z"),
+					Movq("z", RAX),
+					Jmpq("conclusion")
+				);
+				instrs.ShouldEqual(expected);
+			}
+
+			public static void TestAdvancedSelect() {
+				var instrs = SelectTail(c0prog2);
+				var expected = LL<Instr>.From(
+					Movq(5, "x"),
+					Addq(2, "x"),
+					Addq(10, "x"),
+					Addq(10, "x"),
+					Addq("x", "x"),
+					Movq("x", RAX),
+					Jmpq("conclusion")
+				);
+				instrs.ShouldEqual(expected);
+			}
+
+			public static string Print(LL<Instr> instrs) {
+				StringBuilder str = new StringBuilder();
+				foreach (var ins in instrs) {
+					str.Append(ins.ToString());
+					str.Append("\n");
+				}
+				return str.ToString();
+			}
+
+			public static void TestAssignHomesDontChange() {
+				var retq = new LL<Instr>(Retq());
+				var addq = new LL<Instr>(Addq(RBX, RAX));
+
+				(var aretq, _, _)= AssignHomes(retq, null);;
+				(var aaddq, _, _) = AssignHomes(addq, null);;
+
+				aretq.ShouldEqual(retq);
+				aaddq.ShouldEqual(addq);
+			}
+
+			public static void TestAssignHomesPass() {
+				var instrs = SelectTail(c0prog);
+				var prog = 
+@"let ni a is 42 in
+	let ni b is a in
+		b
+	end
+end";
+
+				var parsed = N1Lang.ParseProgram(new N1Lang.Tokenizer(prog));
+				var transformed = N1Lang.Reduce(parsed);
+				(var c0d, var names) = N1Lang.Explicate(transformed);
+				var asm = SelectTail(c0d);
+				(var assigned, var env, var i) = AssignHomes(asm, names);
+
+				var expected = LL<Instr>.From(
+					Movq(42, (RBP, -8)),
+					Movq((RBP, -8), (RBP, -16)),
+					Movq((RBP, -16), RAX),
+					Jmpq("conclusion")
+				);
+
+				assigned.ShouldEqual(expected);
+			}
+			
+
 		}
 
 
