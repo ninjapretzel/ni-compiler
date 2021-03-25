@@ -330,6 +330,16 @@ namespace ni_compiler {
 			}
 			return false;
 		}
+		/// <inheritdoc/>
+		public override string ToString() {
+			StringBuilder str = new StringBuilder("{");
+			foreach (var thing in this) {
+				str.Append(thing);
+				str.Append(",");
+			}
+			str.Append("}");
+			return str.ToString();
+		}
 
 		/// <summary> Creates a new Set with the given item added to it </summary>
 		/// <param name="t"> Item to add to the new set </param>
@@ -391,12 +401,23 @@ namespace ni_compiler {
 		/// <param name="right"> Second set or IEnumerable{T} </param>
 		/// <returns> union of two sets </returns>
 		public static Set<T> operator +(Set<T> left, IEnumerable<T> right) { return left.AddAll(right); }
-		
+		/// <summary> Adds a single element to a set as an operator. <see cref="Add(T)"/> </summary>
+		/// <param name="left"> Set to add to </param>
+		/// <param name="right"> Value to add </param>
+		/// <returns> Copy of <paramref name="left"/> with <paramref name="right"/> added </returns>
+		public static Set<T> operator +(Set<T> left, T right) { return left.Add(right); }
+
 		/// <summary> Synonmym for <see cref="Difference(Set{T})"/> </summary>
 		/// <param name="left"> First set </param>
 		/// <param name="right"> Second set </param>
 		/// <returns> difference of <paramref name="right"/> subtracted from <paramref name="left"/> </returns>
-		public static Set<T> operator -(Set<T> left, Set<T> right) { return left.Difference(right); }
+		public static Set<T> operator -(Set<T> left, IEnumerable<T> right) { return left.RemoveAll(right); }
+		/// <summary> Removes a single element to a set as an operator. <see cref="Add(T)"/> </summary>
+		/// <param name="left"> Set to remove from </param>
+		/// <param name="right"> Value to remove </param>
+		/// <returns> Copy of <paramref name="left"/> with <paramref name="right"/> removed </returns>		
+		public static Set<T> operator -(Set<T> left, T right) { return left.Remove(right); }
+
 
 	}
 	/// <summary> Class used to build program trees from </summary>
