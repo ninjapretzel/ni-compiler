@@ -133,10 +133,162 @@ namespace ni_compiler {
 			}
 			return new LL<Instr>(instr);
 		}
-
-
-
 		#endregion
+
+		#region Liveness Detection & Interference
+		public class LivenessData {
+			public Set<Arg> liveAfter { get; private set; }
+			public Set<Arg> reads { get; private set; }
+			public Set<Arg> writes { get; private set; }
+			public Set<Arg> liveBefore { get; private set; }
+			public Instr instruction { get; private set; }
+			public LivenessData() {
+				var empty = new Set<Arg>();
+				liveAfter = reads = writes = liveBefore = empty;
+				instruction = null;
+			}
+			public LivenessData(Set<Arg> LA, Set<Arg> R, Set<Arg> W, Set<Arg> LB, Instr ins = null) {
+				liveAfter = LA;
+				reads = R;
+				writes = W;
+				liveBefore = LB;
+				instruction = ins;
+			}
+			public override string ToString() {
+				return $"{instruction,-20}{liveAfter,-20}{reads,-15}{writes,-10}";
+			}
+		}
+		public static (Set<Arg>, LL<LivenessData>) LiveCheck(LL<Instr> instrs) {
+			if (instrs == null) { 
+				var initial = new LivenessData();
+				return (initial.liveBefore, new LL<LivenessData>(initial)); 
+			}
+			(var liveAfter, var rest) = LiveCheck(instrs.next);
+			var read = ReadSet(instrs.data);
+			var write = WriteSet(instrs.data);
+			var liveBefore = (liveAfter - write) + read;
+			var liveData = new LivenessData(liveAfter, read, write, liveBefore, instrs.data);
+
+			return (liveBefore, rest.Add(liveData));
+		}
+		public static Graph Interference(LL<Instr> instrs) {
+			(var liveBefore, var liveness) = LiveCheck(instrs);
+			return Interference(liveness);
+		}
+		public static Graph Interference(LL<LivenessData> liveness) {
+			if (liveness == null) { return new Graph(); }
+			
+			Graph justHere = new Graph();
+
+			var cur = liveness.data;
+			foreach (var write in cur.writes) {
+				Set<Arg> interfere = new Set<Arg>();
+				foreach (var arg in cur.liveAfter) {
+					if (!cur.writes.Contains(arg) 
+						&& (cur.instruction.kind == Instr.Kind.Movq ? !cur.reads.Contains(arg) : true)) {
+						
+						justHere = justHere.OneWay(write, arg);
+					}
+				}		
+			}
+
+			Graph g = Interference(liveness.next);
+			foreach (var pair in justHere) {
+				foreach (var other in pair.Value) {
+					g = g.Interfere(pair.Key, other);
+				}
+			}
+
+			return g;
+		}
+			
+		public class Graph : Dictionary<Arg, Set<Arg>> {
+			public Graph() : base() { }
+			public Graph(Graph other)  : base(other) { }
+
+			public Graph Interfere(Arg a, Arg b) {
+				Graph g = new Graph(this);
+				// Console.WriteLine($"Interfering {a} with {b}");
+				if (!g.ContainsKey(a)) { g[a] = new Set<Arg>(); }
+				if (!g.ContainsKey(b)) { g[b] = new Set<Arg>(); }
+				g[a] += b;
+				g[b] += a;
+				return g;
+			}
+			public Graph OneWay(Arg a, Arg b) {
+				Graph g = new Graph(this);
+				if (!g.ContainsKey(a)) { g[a] = new Set<Arg>(); }
+				g[a] += b;
+				return g;
+			}
+			public override string ToString() {
+				return ToString(false);
+			}
+			public string ToString(bool insertNewlines) {
+				StringBuilder str = new StringBuilder("{");
+				if (insertNewlines) { str.Append("\n\t"); }
+
+				foreach (var pair in this) {
+					str.Append(pair.Key);
+					str.Append(" ~~ {");
+					foreach (var other in pair.Value) {
+						str.Append(other);
+						str.Append(",");
+					}
+					str.Append("}");
+					if (insertNewlines) {
+						str.Append("\n\t");
+					}
+				}
+
+				if (insertNewlines) { str.Append("\n"); }
+				str.Append("}");
+				return str.ToString();
+			}
+		}
+
+		public static Arg[] CALLER_SAVED = new Arg[] { RAX, RCX, RDX, RSI, RDI, R8, R9, R10, R11 };
+		public static Arg[] CALLEE_SAVED = new Arg[] { RSP, RBP, RBX, R12, R13, R14, R15 };
+		public static Arg[] PARAMETERS = new Arg[] { RDI, RSI, RDX, RCX, R8, R9 };
+		public static Arg[] RETURNS = new Arg[] { RAX };
+
+		public static Set<Arg> ReadSet(Instr instr) {
+			Set<Arg> s = new Set<Arg>();
+			void maybeAdd(Arg arg) {
+				if (arg.kind == Arg.Kind.Var) { s = s.Add(arg); }
+				if (arg.kind == Arg.Kind.Mem) { s = s.Add(arg); }
+				if (arg.kind == Arg.Kind.Reg) { s = s.Add(arg); }
+			}
+			switch (instr.kind) {
+				case Instr.Kind.Negq:
+				case Instr.Kind.Pushq:
+				case Instr.Kind.Movq: { maybeAdd(instr.arg1);  break; }
+				case Instr.Kind.Subq: 
+				case Instr.Kind.Addq: { maybeAdd(instr.arg1); maybeAdd(instr.arg2); break; }
+				case Instr.Kind.Jmp: { s = s.Add(RSP); break; }
+			}
+			return s;
+		}
+		public static Set<Arg> WriteSet(Instr instr) {
+			Set<Arg> s = new Set<Arg>();
+			void maybeAdd(Arg arg) {
+				if (arg.kind == Arg.Kind.Var) { s = s.Add(arg); }
+				if (arg.kind == Arg.Kind.Mem) { s = s.Add(arg); }
+				if (arg.kind == Arg.Kind.Reg) { s = s.Add(arg); }
+			}
+			switch (instr.kind) {
+				case Instr.Kind.Negq:
+				case Instr.Kind.Pushq: { maybeAdd(instr.arg1); break; }
+				case Instr.Kind.Addq:
+				case Instr.Kind.Subq:
+				case Instr.Kind.Movq: {maybeAdd(instr.arg2); break; }
+				case Instr.Kind.Callq: { s = s.AddAll(CALLEE_SAVED); break; }
+			}
+			return s;
+		}
+		#endregion
+
+
 		#region Definitions
 		public struct Register : IComparable<Register> {
 			public readonly string name;
@@ -220,12 +372,9 @@ namespace ni_compiler {
 					case Kind.Imm: return imm.CompareTo(other.imm);
 					case Kind.Reg: return reg.CompareTo(other.reg);
 					case Kind.Mem: {
-							int cmp = reg.CompareTo(other.reg);
-							if (cmp == 0) {
-								return imm.CompareTo(other.imm);
-							}
-							return cmp;
-						}
+						int cmp = reg.CompareTo(other.reg);
+						return cmp == 0 ? imm.CompareTo(other.imm) : cmp;
+					}
 					case Kind.Var: return var.CompareTo(other.var);
 				}
 				throw new Exception($"Invalid Arg Comparison [{this}] -> [{other}]");
@@ -461,6 +610,34 @@ end";
 				);
 
 				assigned.ShouldEqual(expected);
+			}
+
+			public static void TestInterference() {
+				LL<Instr> program = LL<Instr>.From(
+					Movq(1, "v"),
+					Movq(25, "w"),
+					Movq("v", "x"),
+					Addq(7, "x"),
+					Movq("x", "y"),
+					Movq("x", "z"),
+					Addq("w", "z"),
+					Movq("y", "t"),
+					Negq("t"),
+					Movq("z", RAX),
+					Addq("t", RAX),
+					Jmpq("conclusion")
+				);
+
+				var graph = Interference(program);
+				graph[RAX].ShouldEqual(new Set<Arg>(RSP, "t"));
+				graph[RSP].ShouldEqual(new Set<Arg>(RAX, "t", "z", "y", "x", "w", "v"));
+				graph["t"].ShouldEqual(new Set<Arg>(RAX, RSP, "z"));
+				graph["z"].ShouldEqual(new Set<Arg>("t", RSP, "y", "w"));
+				graph["y"].ShouldEqual(new Set<Arg>("z", RSP, "w"));
+				graph["w"].ShouldEqual(new Set<Arg>("z", "y", "x", RSP, "v"));
+				graph["x"].ShouldEqual(new Set<Arg>(RSP, "w"));
+				graph["v"].ShouldEqual(new Set<Arg>("w", RSP));
+
 			}
 			
 
