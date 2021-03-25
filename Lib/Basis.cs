@@ -1,4 +1,5 @@
-﻿using System;
+﻿using BakaTest;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
@@ -22,7 +23,6 @@ namespace ni_compiler {
 		/// <summary> Link to next node </summary>
 		public LL<T> next;
 
-
 		/// <summary> Construct a new node with the given data/next link </summary>
 		/// <param name="data"> data item to store </param>
 		/// <param name="next"> next link or null </param>
@@ -30,9 +30,12 @@ namespace ni_compiler {
 			this.data = data;
 			this.next = next;
 		}
+		/// <inheritdoc/>
 		public IEnumerator<T> GetEnumerator() { return new Enumerator(this); }
+		/// <inheritdoc/>
 		IEnumerator IEnumerable.GetEnumerator() { return new Enumerator(this); }
 
+		/// <summary> Enumerator for <see cref="LL{T}"/> </summary>
 		public class Enumerator : IEnumerator<T> {
 			public Enumerator(LL<T> start) { this.start = start; first = true; }
 			private LL<T> start;
@@ -52,6 +55,7 @@ namespace ni_compiler {
 				return false;
 			}
 		}
+		/// <inheritdoc/>
 		public override bool Equals(object obj) {
 			if (obj is LL<T> other) {
 				if (next == null && other.next == null) {
@@ -61,9 +65,20 @@ namespace ni_compiler {
 			}
 			return false;
 		}
+		private int _hash;
+		private bool _hashBaked;
+		/// <inheritdoc/>
 		public override int GetHashCode() {
-			return base.GetHashCode();
+			if (!_hashBaked) { 
+				_hashBaked = true;
+				_hash = data.GetHashCode();
+				if (next != null) {
+					_hash ^= next.GetHashCode();
+				}
+			}
+			return _hash;
 		}
+		/// <inheritdoc/>
 		public override string ToString() {
 			StringBuilder str = new StringBuilder("[ ");
 			
@@ -183,6 +198,11 @@ namespace ni_compiler {
 			_toString = elem + old._toString;
 			return $"{{{_toString}\n}}";
 		}
+		/// <inheritdoc/>
+		public override int GetHashCode() {
+			return list.GetHashCode();
+		}
+		/// <inheritdoc/>
 		public override bool Equals(object obj) {
 			if (obj is Env<T> other) {
 				var trace1 = list;
@@ -225,6 +245,158 @@ namespace ni_compiler {
 			}
 			throw new Exception($"No variable '{name}' found in env {ToString()}");
 		}
+
+	}
+
+	public class Set_Tests {
+		public static void TestEq() {
+			Set<int> a = Set<int>.FromList(1,2,3,4);
+			Set<int> b = Set<int>.FromList(1,2,3,4);
+
+			a.Equals(b).ShouldBeTrue();
+		}
+		public static void TestUnion() {
+			Set<int> a = new Set<int>(1,2,3);
+			Set<int> b = new Set<int>(4,5,6);
+			Set<int> expected = new Set<int>(6, 5, 4, 3, 2, 1);
+			(a+b).ShouldEqual(expected);
+
+			a = a.Add(4);
+			b = b.Add(3);
+			(a+b).ShouldEqual(expected);
+		}
+
+		public static void TestSubtract() {
+			Set<int> a = new Set<int>(1,2,3,4,5,6);
+			Set<int> b = new Set<int>(1,3,5);
+			Set<int> expected = new Set<int>(2,4,6);
+
+			(a-b).ShouldEqual(expected);
+			a = a.Remove(1).Remove(3);
+			(a-b).ShouldEqual(expected);
+		}
+		
+	}
+	/// <summary> Set Theory Set class with methods like Haskell's </summary>
+	/// <typeparam name="T"> Generic type contained within</typeparam>
+	public class Set<T> : IEnumerable<T> where T : IComparable<T> {
+		
+		/// <summary> Internal container of items </summary>
+		private ISet<T> items;
+		/// <summary> Constructs a new empty set </summary>
+		public Set() {
+			items = new HashSet<T>();
+		}
+		/// <summary> Constructs a copy of another Set </summary>
+		/// <param name="other"> Set to copy </param>
+		public Set(Set<T> other) {
+			items = new HashSet<T>(other.items);
+		}
+		/// <summary> Constructs a new set containing the given items </summary>
+		/// <param name="ts"> Items to contain in the set </param>
+		public Set(params T[] ts) : this((IEnumerable<T>) ts) { }
+
+		/// <summary> Constructs a new set containing the given items </summary>
+		/// <param name="ts"> Items to contain in the set </param>
+		public Set(IEnumerable<T> ts) : this() {
+			foreach (var t in ts) { items.Add(t); }
+		}
+
+		/// <summary> Creates a Set that contains all of the given items </summary>
+		/// <param name="ts"> Items to contain within the set </param>
+		/// <returns> Set containing all given items </returns>
+		public static Set<T> FromList(params T[] ts) { return new Set<T>(ts); }
+
+		private int _hash = 0;
+		private bool _hashBaked = false;
+		/// <inheritdoc/>
+		public override int GetHashCode() {
+			if (!_hashBaked) { 
+				_hash = 0;
+				_hashBaked = true;
+				foreach (var item in items) { _hash ^= item.GetHashCode(); }
+			}
+			return _hash;
+		}
+
+		/// <inheritdoc/>
+		public override bool Equals(object obj) {
+			if (obj is Set<T> other) {
+				if (other.items.Count != items.Count) { return false; }
+				foreach (var item in items) {
+					if (!other.items.Contains(item)) { return false; }
+				}
+				return true;
+			}
+			return false;
+		}
+
+		/// <summary> Creates a new Set with the given item added to it </summary>
+		/// <param name="t"> Item to add to the new set </param>
+		/// <returns> Copy of this set with the given item added to it </returns>
+		public Set<T> Add(T t) { 
+			var result = new Set<T>(this);
+			result.items.Add(t);
+			return result;
+		}
+
+		/// <summary> Creates a new Set with the given item removed from it </summary>
+		/// <param name="t"> Item to remove from the new set </param>
+		/// <returns> Copy of this set with the given item removed from it </returns>
+		public Set<T> Remove(T t) {
+			var result = new Set<T>(this);
+			result.items.Remove(t);
+			return result;
+		}
+
+		/// <summary> Creates a new Set with all of the given items added to it </summary>
+		/// <param name="ts"> Items to add to the new set </param>
+		/// <returns> Copy of this set, with the given items added to it </returns>
+		public Set<T> AddAll(IEnumerable<T> ts) {
+			Set<T> result = new Set<T>(this);
+			foreach (var t in ts) { result.items.Add(t); }
+			return result;
+		}
+
+		/// <summary> Creates a new Set with all of the given items removed from it </summary>
+		/// <param name="ts"> Items to remove from the new set </param>
+		/// <returns> Copy of this set, with the given items removed from it </returns>
+		public Set<T> RemoveAll(IEnumerable<T> ts) {
+			Set<T> result = new Set<T>(this);
+			foreach (var t in ts) { result.items.Remove(t); }
+			return result;
+		}
+		/// <summary> Reports wether or not the given item is contained in the set </summary>
+		/// <param name="t"> Item to check for presense of </param>
+		/// <returns> True if the item is a member in the set, false otherwise. </returns>
+		public bool Contains(T t) { return items.Contains(t); }
+
+		/// <summary> Creates a new set that is the union of this set and another </summary>
+		/// <param name="other"> Other set to union with </param>
+		/// <returns> new set containing all items in both this and <paramref name="other"/> </returns>
+		public Set<T> Union(Set<T> other) { return AddAll(other); }
+		
+		/// <summary> Creates a new set that is the difference of this set and another </summary>
+		/// <param name="other"> Other set to difference with </param>
+		/// <returns> new set containing all items in this set, but not in <paramref name="other"/> </returns>
+		public Set<T> Difference(Set<T> other) { return RemoveAll(other); }
+
+		/// <inheritdoc/>
+		public IEnumerator<T> GetEnumerator() { return items.GetEnumerator(); }
+		/// <inheritdoc/>
+		IEnumerator IEnumerable.GetEnumerator() { return items.GetEnumerator(); }
+
+		/// <summary> Synonym for <see cref="Union(Set{T})"/> </summary>
+		/// <param name="left"> First set </param>
+		/// <param name="right"> Second set or IEnumerable{T} </param>
+		/// <returns> union of two sets </returns>
+		public static Set<T> operator +(Set<T> left, IEnumerable<T> right) { return left.AddAll(right); }
+		
+		/// <summary> Synonmym for <see cref="Difference(Set{T})"/> </summary>
+		/// <param name="left"> First set </param>
+		/// <param name="right"> Second set </param>
+		/// <returns> difference of <paramref name="right"/> subtracted from <paramref name="left"/> </returns>
+		public static Set<T> operator -(Set<T> left, Set<T> right) { return left.Difference(right); }
 
 	}
 	/// <summary> Class used to build program trees from </summary>
@@ -322,7 +494,7 @@ namespace ni_compiler {
 
 			this.type = type;
 		}
-
+		/// <inheritdoc/>
 		public override bool Equals(object obj) {
 			if (obj is Node other) {
 				if (other.DataListed != DataListed) { return false; }
