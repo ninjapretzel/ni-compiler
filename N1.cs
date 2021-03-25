@@ -122,33 +122,61 @@ namespace ni_compiler {
 
 		#region PASS: Partial Evaluation
 		public static Node<N1> PartialEvaluate(Node<N1> n) {
+			Node<N1> qadd(Node<N1> inta, Node<N1> intb) {
+				int av = int.Parse(inta.datas[0]);
+				int bv = int.Parse(intb.datas[0]);
+				return Int(av + bv);
+			}
 			switch (n.type) {
 				case N1.Int:
 				case N1.Var:
 				case N1.Read:
 					return n;
 				case N1.Add: {
-						Node<N1> a = PartialEvaluate(n.nodes[0]);
-						Node<N1> b = PartialEvaluate(n.nodes[1]);
-						if (a.type == N1.Int && b.type == N1.Int) {
-							int av = int.Parse(a.datas[0]);
-							int bv = int.Parse(b.datas[0]);
-							return Int(av + bv);
+					Node<N1> a = PartialEvaluate(n.nodes[0]);
+					Node<N1> b = PartialEvaluate(n.nodes[1]);
+					if (a.type == N1.Int && b.type == N1.Int) { return qadd(a,b); }
+					if (a.type == N1.Int || b.type == N1.Int) {
+						Node<N1> intNode = a.type == N1.Int ? a : b;
+						if (a.type == N1.Add) {
+							Node<N1> aa = a.nodes[0];
+							Node<N1> ab = a.nodes[1];
+							if (aa.type == N1.Int) { return Add(qadd(intNode, aa), ab); }
+							if (ab.type == N1.Int) { return Add(qadd(intNode, ab), aa); }
 						}
-						return Add(a, b);
+						if (b.type == N1.Add) {
+							Node<N1> ba = b.nodes[0];
+							Node<N1> bb = b.nodes[1];
+							if (ba.type == N1.Int) { return Add(qadd(intNode, ba), bb); }
+							if (bb.type == N1.Int) { return Add(qadd(intNode, bb), ba); }
+						}
 					}
+					if (a.type == N1.Add && b.type == N1.Add) {
+						Node<N1> aa = a.nodes[0];
+						Node<N1> ab = a.nodes[1];
+						Node<N1> ba = b.nodes[0];
+						Node<N1> bb = b.nodes[1];
+
+						if (aa.type == N1.Int && ba.type == N1.Int) { return Add(qadd(aa, ba), Add(ab, bb)); }
+						if (aa.type == N1.Int && bb.type == N1.Int) { return Add(qadd(aa, bb), Add(ab, ba)); }
+						if (ab.type == N1.Int && ba.type == N1.Int) { return Add(qadd(ab, ba), Add(aa, bb)); }
+						if (ab.type == N1.Int && bb.type == N1.Int) { return Add(qadd(ab, bb), Add(aa, ba)); }
+					}
+
+					return Add(a, b);
+				}
 				case N1.Negate: {
-						Node<N1> expr = PartialEvaluate(n.nodes[0]);
-						if (expr.type == N1.Int) {
-							return Int(-int.Parse(expr.datas[0]));
-						}
-						return Negate(expr);
+					Node<N1> expr = PartialEvaluate(n.nodes[0]);
+					if (expr.type == N1.Int) {
+						return Int(-int.Parse(expr.datas[0]));
 					}
+					return Negate(expr);
+				}
 				case N1.Let: {
-						Node<N1> expr = PartialEvaluate(n.nodes[0]);
-						Node<N1> body = PartialEvaluate(n.nodes[1]);
-						return Let(n.datas[0], expr, body);
-					}
+					Node<N1> expr = PartialEvaluate(n.nodes[0]);
+					Node<N1> body = PartialEvaluate(n.nodes[1]);
+					return Let(n.datas[0], expr, body);
+				}
 			}
 			throw new Exception($"Unknown N1 node type {n.type}");
 		}
@@ -302,9 +330,9 @@ in
 end";
 			static string badprog = @"let ni omg is wtf in bbq gtfo";
 			static string verticalSlice = @"
-
-
 ";
+
+
 			public static void TestExplicate() {
 				var prog = 
 				Let("y", 
@@ -328,6 +356,7 @@ end";
 
 				names.ShouldEqual(LL<string>.From("x1", "x2", "y"));
 			}
+
 
 			public static void TestTokenize() {
 				Tokenizer tok = new Tokenizer(prog);
@@ -360,6 +389,7 @@ end";
 				t = tok.peekToken; tok.Next(); t.type.ShouldBe("end");
 			}
 			
+
 			public static void TestParser() {
 				Tokenizer tok = new Tokenizer(prog);
 				Node<N1> parsed = tok.ParseExpression();
@@ -383,6 +413,7 @@ end";
 				}
 
 			}
+
 			/// <summary> Test cases from professor </summary>
 			public static void TestUniquify() {
 				void Verify(string note, Node<N1> a, Node<N1> b) {
@@ -590,6 +621,21 @@ end";
 				//Log.Info(pg3Reduced.ToString<N1>());
 				int result4 = Run(pg3Reduced);
 
+			}
+			public static void TestPartialEvaluate() {
+				Node<N1> prog = Add(Int(1), Add(Int(2), Int(3)));
+				Node<N1> peval = PartialEvaluate(prog);
+				peval.ShouldEqual(Int(6));
+			}
+			public static void TestAdvancedPartialEvaluate() {
+				Node<N1> prog = Add(Int(1), Add(Read(), Int(1)));
+				var peval = PartialEvaluate(prog);
+				peval.ShouldEqual(Add(Int(2), Read()));
+
+				Node<N1> prog2 = Add(Add(Read(), Int(1)), Add(Read(), Int(1)));
+				var peval2 = PartialEvaluate(prog2);
+
+				Console.WriteLine(peval2);				
 			}
 			
 		}
