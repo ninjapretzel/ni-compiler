@@ -111,15 +111,10 @@ namespace ni_compiler {
 		/// <param name="right"> Right list (right side of data) </param>
 		/// <returns> Combined list: (left0, left1, ..., leftn, right0, right1, ..., rightn)  </returns>
 		public static LL<T> Append<T>(this LL<T> left, LL<T> right) {
-			LL<T> acc = null;
+			LL<T> acc = right;
 			Stack<LL<T>> nodes = new Stack<LL<T>>();
 			if (left != null) {
 				foreach (var item in left) {
-					nodes.Push(new LL<T>(item));
-				}
-			}
-			if (right != null) {
-				foreach (var item in right) {
 					nodes.Push(new LL<T>(item));
 				}
 			}
@@ -128,8 +123,6 @@ namespace ni_compiler {
 				popped.next = acc;
 				acc = popped;
 			}
-
-
 			return acc;
 		}
 		
@@ -165,14 +158,17 @@ namespace ni_compiler {
 		public LL<(string, T)> list { get; private set; }
 		/// <summary> Link to old environment </summary>
 		public Env<T> old { get; private set; }
+		/// <summary> Number of items in this environment </summary>
+		public int size { get; private set; }
 		/// <summary> Empty constructor </summary>
-		public Env() {}
+		public Env() { size = 0; }
 		/// <summary> Extension constructor </summary>
 		/// <param name="old"> Old list to extend </param>
 		/// <param name="sym"> new symbol to bind </param>
 		/// <param name="val"> new value to bind </param>
 		public Env(Env<T> old, string sym, T val) {
 			this.old = old;
+			size = old.size + 1;
 			list = new LL<(string, T)>((sym, val), old?.list);
 		}
 		/// <summary> Inner field for caching result of <see cref="ToString"/> </summary>
@@ -208,22 +204,26 @@ namespace ni_compiler {
 			}
 			return false;
 		}
+		/// <summary> Indexer, synonym for <see cref="Lookup(string)"/> </summary>
+		/// <param name="name"> name of mapping to look up </param>
+		/// <returns> Value mapped to the given name </returns>
+		public T this[string name] { get { return Lookup(name); } }
 		/// <summary> Extend the given environment with a new symbol/value pair </summary>
 		/// <param name="sym"> Symbol to extend with </param>
 		/// <param name="val"> Value to bind to symbol </param>
 		/// <returns> Newly constructed environment with binding added. </returns>
 		public Env<T> Extend(string sym, T val) { return new Env<T>(this, sym, val); }
 		/// <summary> Lookup the given symbol in the given environment. </summary>
-		/// <param name="sym"> Symbol to look up. </param>
-		/// <returns> Found value, or throws an exception if it is not found. </returns>
-		public T Lookup(string sym) {
+		/// <param name="name"> Name to look up. </param>
+		/// <returns> Found value mapped to name, or throws an exception if it is not found. </returns>
+		public T Lookup(string name) {
 			var trace = list;
 			while (trace != null) {
-				(string name, T val) = trace.data;
-				if (name == sym) { return val; }
+				(string name2, T val) = trace.data;
+				if (name2 == name) { return val; }
 				trace = trace.next;
 			}
-			throw new Exception($"No variable '{sym}' found in env {ToString()}");
+			throw new Exception($"No variable '{name}' found in env {ToString()}");
 		}
 
 	}
