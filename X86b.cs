@@ -136,25 +136,80 @@ namespace ni_compiler {
 		#endregion
 
 		#region Liveness Detection & Interference
-		public static LL<(string, int?)> ColorGraph(Graph<Arg> graph, LL<string> names) {
-			
+		public static LL<(string, int?)> ColorGraph(Graph<Arg> graph) {
+			Heap<SatData> queue = new Heap<SatData>();
+			foreach (var pair in graph) {
+				var vert = pair.Key;
+				var edges = pair.Value;
+				int? color = null;
+				if (vert.kind == Arg.Kind.Reg) {
+					if (vert.reg.Equals(RAX)) { color = -1; }
+					if (vert.reg.Equals(RSP)) { color = -2; }
+				}
+				queue.Push(new SatData(vert, edges, color));
+				Log.Info($"Adding {{{vert}, {edges}, {color}}} to queue");
+			}
+			LL<(string, int?)> colorings = null;
+			int nextColor = 0;
+			while (!queue.IsEmpty) {
+				var data = queue.Pop();
+				if (data.arg.kind != Arg.Kind.Var) { continue; }
+				Log.Info($"Checking {data.arg}");
+				var name = data.arg.var;
+				int? assign = null;
+				Log.Info($"Trying to assign color to {{{name}}} against {data.saturation}");
+				for (int i = 0; i < nextColor; i++) {
+					if (!data.saturation.Contains(i)) {
+						Log.Info($"Color {i} not yet taken");
+						assign = i;
+						break;
+					} else {
+						Log.Info($"Color {i} is taken, skipping...");
+					}
+				}
 
-			return null;
+				if (!assign.HasValue) { 
+					assign = nextColor;
+					nextColor += 1;
+					Log.Info($"Color {assign.Value} __FIRST__ assigned to {name}");
+				} else {
+					Log.Info($"Color {assign.Value} assigned to {name}");
+				}
+
+				foreach (var other in queue) {
+					Log.Info($"Looking at {{{other.arg}}}'s edges {other.edges}");
+					if (other.edges.Contains(name)) {
+						Log.Info($"Marking {{{other.arg}}} as saturated for {assign.Value}");
+
+						other.saturation += assign.Value;
+					}
+				}
+
+				colorings = colorings.Add((name, assign.Value));
+			}
+
+			return colorings;
 		}
 
 		public class SatData : IComparable<SatData> {
+			/// <summary> Vertex </summary>
 			public Arg arg;
+			/// <summary> Vertexes connected to this one </summary>
 			public Set<Arg> edges;
+			/// <summary> Assigned color </summary>
 			public int? color;
+			/// <summary> What colors cannot be applied? </summary>
 			public Set<int> saturation;
-			public SatData(Arg arg, Set<Arg> edges, int? color) {
+			
+			public SatData(Arg arg, Set<Arg> edges, int? color = null) {
 				this.arg = arg;
 				this.edges = edges;
 				this.color = color;
 				saturation = new Set<int>();
 			}
+			/// <inheritdoc/>
 			public int CompareTo(SatData other) {
-				return edges.Count - other.edges.Count;
+				return other.edges.Count - edges.Count;
 			}
 		}
 
@@ -587,9 +642,7 @@ end";
 
 				assigned.ShouldEqual(expected);
 			}
-
-			public static void TestInterference() {
-				LL<Instr> program = LL<Instr>.From(
+			public static readonly Instr[] EXAMPLE_PROGRAM = {
 					Movq(1, "v"),
 					Movq(25, "w"),
 					Movq("v", "x"),
@@ -602,7 +655,9 @@ end";
 					Movq("z", RAX),
 					Addq("t", RAX),
 					Jmpq("conclusion")
-				);
+			};
+			public static void TestInterference() {
+				LL<Instr> program = LL<Instr>.From(EXAMPLE_PROGRAM);
 
 				var graph = Interference(program);
 				graph[RAX].ShouldEqual(new Set<Arg>(RSP, "t"));
@@ -614,9 +669,19 @@ end";
 				graph["x"].ShouldEqual(new Set<Arg>(RSP, "w"));
 				graph["v"].ShouldEqual(new Set<Arg>("w", RSP));
 
+				graph["z"].Contains("w").ShouldBeTrue();
+
 			}
 			
+			public static void TestGraphColoring() {
+				LL<Instr> program = LL<Instr>.From(EXAMPLE_PROGRAM);
+				var graph = Interference(program);
 
+				var result = ColorGraph(graph);
+
+				Log.Info(result);
+
+			}
 		}
 
 
