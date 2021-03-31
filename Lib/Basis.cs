@@ -482,7 +482,7 @@ namespace ni_compiler {
 
 	/// <summary> Class that implements a min-heap structure for any type that implements <see cref="IComparable{T}"/></summary>
 	/// <typeparam name="T"> Generic type contained within </typeparam>
-	public class Heap<T> where T : IComparable<T> {
+	public class Heap<T> : IEnumerable<T> where T : IComparable<T> {
 		/// <summary> Default capacity of a new Heap </summary>
 		public const int DEFAULT_CAPACITY = 20;
 		/// <summary> Default growth factor of a new Heap </summary>
@@ -699,6 +699,22 @@ namespace ni_compiler {
 		[MethodImpl(MethodImplOptions.AggressiveInlining)]
 		private void SiftDown(int index) { SiftDown(ts, index, cnt, comparator); }
 
+		/// <inheritdoc/>
+		public IEnumerator<T> GetEnumerator() { return new Enumerator(this); }
+		/// <inheritdoc/>
+		IEnumerator IEnumerable.GetEnumerator() { return new Enumerator(this); }
+
+		public class Enumerator : IEnumerator<T> {
+			private int pos;
+			private Heap<T> heap;
+			public Enumerator(Heap<T> heap) { this.heap = heap; pos = -1; }
+
+			public T Current  { get { return heap.ts[pos]; } }
+			object IEnumerator.Current { get { return heap.ts[pos]; } }
+			public void Dispose() { }
+			public bool MoveNext() { return ++pos < heap.Count; }
+			public void Reset() { pos = -1; }
+		}
 	}
 
 	public static class Heap_Tests {
@@ -750,7 +766,17 @@ namespace ni_compiler {
 			heap.Pop().ShouldBe(30);
 			heap.Pop().ShouldBe(20);
 			heap.Pop().ShouldBe(10);
+		}
 		
+		public static void TestIterator() {
+			int[] ints = new int[] { 70, 50, 30, 20, 40, 60, 10, 80 };
+			Heap<int> heap = Heap<int>.From(ints);
+			int cnt = 0;
+			foreach (int i in heap) {
+				cnt++;
+			}
+			cnt.ShouldBe(ints.Length);
+
 		}
 	}
 
