@@ -136,6 +136,28 @@ namespace ni_compiler {
 		#endregion
 
 		#region Liveness Detection & Interference
+		public static LL<(string, int?)> ColorGraph(Graph<Arg> graph, LL<string> names) {
+			
+
+			return null;
+		}
+
+		public class SatData : IComparable<SatData> {
+			public Arg arg;
+			public Set<Arg> edges;
+			public int? color;
+			public Set<int> saturation;
+			public SatData(Arg arg, Set<Arg> edges, int? color) {
+				this.arg = arg;
+				this.edges = edges;
+				this.color = color;
+				saturation = new Set<int>();
+			}
+			public int CompareTo(SatData other) {
+				return edges.Count - other.edges.Count;
+			}
+		}
+
 		public class LivenessData {
 			public Set<Arg> liveAfter { get; private set; }
 			public Set<Arg> reads { get; private set; }
@@ -171,14 +193,14 @@ namespace ni_compiler {
 
 			return (liveBefore, rest.Add(liveData));
 		}
-		public static Graph Interference(LL<Instr> instrs) {
+		public static Graph<Arg> Interference(LL<Instr> instrs) {
 			(var liveBefore, var liveness) = LiveCheck(instrs);
 			return Interference(liveness);
 		}
-		public static Graph Interference(LL<LivenessData> liveness) {
-			if (liveness == null) { return new Graph(); }
+		public static Graph<Arg> Interference(LL<LivenessData> liveness) {
+			if (liveness == null) { return new Graph<Arg>(); }
 			
-			Graph justHere = new Graph();
+			Graph<Arg> justHere = new Graph<Arg>();
 
 			var cur = liveness.data;
 			foreach (var write in cur.writes) {
@@ -186,67 +208,21 @@ namespace ni_compiler {
 				foreach (var arg in cur.liveAfter) {
 					if (!cur.writes.Contains(arg) 
 						&& (cur.instruction.kind == Instr.Kind.Movq ? !cur.reads.Contains(arg) : true)) {
-						
 						justHere = justHere.OneWay(write, arg);
 					}
 				}		
 			}
 
-			Graph g = Interference(liveness.next);
+			Graph<Arg> g = Interference(liveness.next);
 			foreach (var pair in justHere) {
 				foreach (var other in pair.Value) {
-					g = g.Interfere(pair.Key, other);
+					g = g.TwoWay(pair.Key, other);
 				}
 			}
 
 			return g;
 		}
-			
-		public class Graph : Dictionary<Arg, Set<Arg>> {
-			public Graph() : base() { }
-			public Graph(Graph other)  : base(other) { }
-
-			public Graph Interfere(Arg a, Arg b) {
-				Graph g = new Graph(this);
-				// Console.WriteLine($"Interfering {a} with {b}");
-				if (!g.ContainsKey(a)) { g[a] = new Set<Arg>(); }
-				if (!g.ContainsKey(b)) { g[b] = new Set<Arg>(); }
-				g[a] += b;
-				g[b] += a;
-				return g;
-			}
-			public Graph OneWay(Arg a, Arg b) {
-				Graph g = new Graph(this);
-				if (!g.ContainsKey(a)) { g[a] = new Set<Arg>(); }
-				g[a] += b;
-				return g;
-			}
-			public override string ToString() {
-				return ToString(false);
-			}
-			public string ToString(bool insertNewlines) {
-				StringBuilder str = new StringBuilder("{");
-				if (insertNewlines) { str.Append("\n\t"); }
-
-				foreach (var pair in this) {
-					str.Append(pair.Key);
-					str.Append(" ~~ {");
-					foreach (var other in pair.Value) {
-						str.Append(other);
-						str.Append(",");
-					}
-					str.Append("}");
-					if (insertNewlines) {
-						str.Append("\n\t");
-					}
-				}
-
-				if (insertNewlines) { str.Append("\n"); }
-				str.Append("}");
-				return str.ToString();
-			}
-		}
-
+		
 		public static Set<Arg> ReadSet(Instr instr) {
 			Set<Arg> s = new Set<Arg>();
 			void maybeAdd(Arg arg) {
