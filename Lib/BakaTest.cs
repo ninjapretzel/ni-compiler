@@ -267,6 +267,18 @@ namespace BakaTest {
 			}
 		}
 
+		/// <summary> Tests an enumerable collection to make sure the given element is contained within. </summary>
+		/// <typeparam name="T"> Generic type </typeparam>
+		/// <param name="coll"> Collection to test </param>
+		/// <param name="element"> element expected somewhere within </param>
+		public static void ShouldContain<T>(this IEnumerable<T> coll, T element) {
+			foreach (var item in coll) {
+				if (item.Equals(element)) {
+					return;
+				}
+			}
+			throw new AssertFailed("ShouldContain", $"Collection should contain value {element} but it was not found.");
+		}
 
 
 		/// <summary> Tests two things, and throws an exception if they are not equal by Equals in one direction (!obj.Equals(other)) </summary>
