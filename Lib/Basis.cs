@@ -23,6 +23,10 @@ namespace ni_compiler {
 		public T data;
 		/// <summary> Link to next node </summary>
 		public LL<T> next;
+		/// <summary> Internal size </summary>
+		private int _count;
+		/// <summary> </summary>
+		public int Count { get { return _count; } }
 
 		/// <summary> Construct a new node with the given data/next link </summary>
 		/// <param name="data"> data item to store </param>
@@ -30,6 +34,7 @@ namespace ni_compiler {
 		public LL(T data, LL<T> next = null) {
 			this.data = data;
 			this.next = next;
+			_count = next.Size() + 1;
 		}
 		/// <inheritdoc/>
 		public IEnumerator<T> GetEnumerator() { return new Enumerator(this); }
@@ -79,6 +84,28 @@ namespace ni_compiler {
 			}
 			return _hash;
 		}
+		/// <summary> Indexer </summary>
+		/// <param name="i"> index to get at </param>
+		/// <returns> Item at given index, if it exists. </returns>
+		public T this[int i] {
+			get {
+				if (i < 0) { throw new Exception($"LL<{typeof(T)}>.[int]: Negative indexes are not allowed."); }
+				if (i == 0) { return data; }
+				if (i >= _count) { 
+					throw new Exception($"LL<{typeof(T)}>.[int]: Out of elements. Index {i} requested, only has {_count} elements.");
+				}
+
+				LL<T> trace = next;
+				int k = 1;
+				while (trace != null) {
+					if (k == i) { return trace.data; }
+					k++;
+					trace = trace.next;
+				}
+
+				throw new Exception($"LL<{typeof(T)}>.[int]: Should be unreachable. Index {i} requested, only saw {k} elements.");
+			}
+		}
 		/// <inheritdoc/>
 		public override string ToString() {
 			StringBuilder str = new StringBuilder("[ ");
@@ -98,9 +125,28 @@ namespace ni_compiler {
 		public static LL<T> operator +(LL<T> left, LL<T> right) {
 			return LLExt.Append(left, right);
 		}
+		/// <summary> Append a single item on the left end of a given list </summary>
+		/// <param name="left"> Item to append </param>
+		/// <param name="right"> List to append to </param>
+		/// <returns> List with item appended to it </returns>
+		public static LL<T> operator +(T left, LL<T> right) {
+			return new LL<T>(left, right);
+		}
+		/// <summary> Append a single item on the right end of a given list </summary>
+		/// <param name="left"> List to append to </param>
+		/// <param name="right"> Item to append </param>
+		/// <returns> List with item appended to it </returns>
+		public static LL<T> operator +(LL<T> left, T right) {
+			return left + new LL<T>(right);
+		}
 	}
 	/// <summary> Extension methods for <see cref="LL{T}"/> so that calling them on null is valid. </summary>
 	public static class LLExt {
+		public static int Size<T>(this LL<T> list) {
+			if (list == null) { return 0; }
+			return list.Count;
+		}
+
 		/// <summary> Add an item to a list, returning the new list node </summary>
 		/// <typeparam name="T"> Generic content type </typeparam>
 		/// <param name="list"> List to add to </param>
@@ -120,6 +166,16 @@ namespace ni_compiler {
 				acc = acc.Add(item); 
 			}
 			return acc;
+		}
+		/// <summary> Map each element of the given list with the given function </summary>
+		/// <typeparam name="A"> Generic source type </typeparam>
+		/// <typeparam name="B"> Generic result type </typeparam>
+		/// <param name="list"> List to map </param>
+		/// <param name="mapper"> Function to use to map </param>
+		/// <returns> Updated map with the modification made </returns>
+		public static LL<B> Map<A, B>(this LL<A> list, Func<A, B> mapper) {
+			if (list == null) { return null; }
+			return Map(list.next, mapper).Add(mapper(list.data));
 		}
 
 		/// <summary> Append lists </summary>
@@ -171,7 +227,7 @@ namespace ni_compiler {
 	/// <typeparam name="T"> Generic content type </typeparam>
 	public class Env<T> {
 		/// <summary> List of content </summary>
-		public LL<(string, T)> list { get; private set; }
+		public LL<(string name, T value)> list { get; private set; }
 		/// <summary> Link to old environment </summary>
 		public Env<T> old { get; private set; }
 		/// <summary> Number of items in this environment </summary>
@@ -208,23 +264,45 @@ namespace ni_compiler {
 			if (obj is Env<T> other) {
 				var trace1 = list;
 				var trace2 = other.list;
-
+				Set<(string, T)> a = new Set<(string, T)>();
+				Set<(string, T)> b = new Set<(string, T)>();
+				
 				while (trace1 != null && trace2 != null) {
-					(string sym1, T val1) = trace1.data;
-					(string sym2, T val2) = trace2.data;
-
-					if (sym1 != sym2) { return false; }
-					if (!val1.Equals(val2)) { return false; }
+					(string sym1, T val1) aa = trace1.data;
+					(string sym2, T val2) bb = trace2.data;
+					a += aa; b += bb;
 
 					trace1 = trace1.next;
 					trace2 = trace2.next;
 				}
 				if (trace1 == null && trace2 != null) { return false; }
 				if (trace1 != null && trace2 == null) { return false; }
-				return true;
+				
+				return a.Equals(b);
 			}
 			return false;
 		}
+		/// <summary> Return a set of keys into this environment </summary>
+		public Set<string> KeySet { 
+			get {
+				Set<string> keys = new Set<string>();
+				if (list != null) {
+					foreach (var item in list) { keys += item.name; }
+				}
+				return keys;
+			}
+		}
+		/// <summary> Return a set of values contained in this environment </summary>
+		public Set<T> ValueSet {
+			get {
+				Set<T> values = new Set<T>();
+				if (list != null) {
+					foreach (var item in list) { values += item.value; }
+				}
+				return values;
+			}
+		}
+
 		/// <summary> Indexer, synonym for <see cref="Lookup(string)"/> </summary>
 		/// <param name="name"> name of mapping to look up </param>
 		/// <returns> Value mapped to the given name </returns>
@@ -245,6 +323,21 @@ namespace ni_compiler {
 				trace = trace.next;
 			}
 			throw new Exception($"No variable '{name}' found in env {ToString()}");
+		}
+		/// <summary> See if the given symbol has a value </summary>
+		/// <param name="name"> Name of symbol to see </param>
+		/// <param name="value"> output location to write value to </param>
+		/// <returns> True if value existed, otherwise false </returns>
+		public bool Lookup(string name, out T value) {
+			var trace = list;
+			value = default(T);
+			while (trace != null) {
+				string name2;
+				(name2, value) = trace.data;
+				if (name2 == name) { return true; }
+				trace = trace.next;
+			}
+			return false;
 		}
 
 	}
@@ -280,7 +373,7 @@ namespace ni_compiler {
 	}
 	/// <summary> Set Theory Set class with methods like Haskell's </summary>
 	/// <typeparam name="T"> Generic type contained within</typeparam>
-	public class Set<T> : IEnumerable<T> where T : IComparable<T> {
+	public class Set<T> : IEnumerable<T> {
 		
 		/// <summary> Internal container of items </summary>
 		private ISet<T> items;
@@ -300,7 +393,9 @@ namespace ni_compiler {
 		/// <summary> Constructs a new set containing the given items </summary>
 		/// <param name="ts"> Items to contain in the set </param>
 		public Set(IEnumerable<T> ts) : this() {
-			foreach (var t in ts) { items.Add(t); }
+			if (ts != null) {
+				foreach (var t in ts) { items.Add(t); }
+			}
 		}
 		/// <summary> returns the number of items in this set </summary>
 		public int Count { get { return items.Count; } }
@@ -378,6 +473,17 @@ namespace ni_compiler {
 			foreach (var t in ts) { result.items.Remove(t); }
 			return result;
 		}
+
+		/// <summary> Create a set of another type, with each element mapped over. </summary>
+		/// <typeparam name="R"> Generic result type </typeparam>
+		/// <param name="mapper"> Function that coverts from <typeparamref name="T"/> to <typeparamref name="R"/></param>
+		/// <returns> Result after mapping each element </returns>
+		public Set<R> Map<R>(Func<T, R> mapper) {
+			Set<R> result = new Set<R>();
+			foreach (var t in this) { result.items.Add(mapper(t)); }
+			return result;
+		}
+
 		/// <summary> Reports wether or not the given item is contained in the set </summary>
 		/// <param name="t"> Item to check for presense of </param>
 		/// <returns> True if the item is a member in the set, false otherwise. </returns>
