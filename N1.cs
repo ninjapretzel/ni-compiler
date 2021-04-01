@@ -187,6 +187,9 @@ namespace ni_compiler {
 			(int k, Node<N1> res) = ReduceExp(0, tree);
 			return res;
 		}
+		public static (int cnt, Node<N1> tree) ReduceFull(Node<N1> tree, int cnt) {
+			return ReduceExp(cnt, tree);
+		}
 		public static Node<N1> Reduce(Node<N1> body, (string sym, Node<N1> expr) t) {
 			return Let(t.sym, t.expr, body);
 		}
@@ -209,7 +212,8 @@ namespace ni_compiler {
 				case N1.Let: {
 						(int cnt2, Node<N1> expr) = ReduceExp(cnt, n.nodes[0]);
 						(int cnt3, Node<N1> body) = ReduceExp(cnt2, n.nodes[1]);
-						return (cnt3, Let(n.datas[0], expr, body));
+						
+						return (cnt3+1, Let(n.datas[0], expr, body));
 					}
 			}
 
@@ -260,7 +264,9 @@ namespace ni_compiler {
 			(_, _, Node<N1> res) = Uniquify(0, new Env<string>(), tree);
 			return res;
 		}
-
+		public static (int cnt, Env<string> env, Node<N1> tree) UniquifyFull(Node<N1> tree) {
+			return Uniquify(0, new Env<string>(), tree);
+		}
 		public static (int, Env<string>, Node<N1>) Uniquify(int cnt, Env<string> env, Node<N1> n) {
 			switch (n.type) {
 				case N1.Int:
