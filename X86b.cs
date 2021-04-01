@@ -135,8 +135,13 @@ namespace ni_compiler {
 		}
 		#endregion
 
-		#region Liveness Detection & Interference
-		public static LL<(string, int?)> ColorGraph(Graph<Arg> graph) {
+		#region PASS: Allocating Registers, Liveness Detection & Interference
+		public static void AllocateRegisters(LL<Instr> program, LL<string> locals) {
+			
+		}
+
+
+		public static LL<(string, int?)> ColorGraph(Graph<Arg> graph, Set<string> locals) {
 			Heap<SatData> queue = new Heap<SatData>();
 			foreach (var pair in graph) {
 				var vert = pair.Key;
@@ -147,39 +152,42 @@ namespace ni_compiler {
 					if (vert.reg.Equals(RSP)) { color = -2; }
 				}
 				queue.Push(new SatData(vert, edges, color));
-				Log.Info($"Adding {{{vert}, {edges}, {color}}} to queue");
+				//Log.Info($"Adding {{{vert}, {edges}, {color}}} to queue");
 			}
 			LL<(string, int?)> colorings = null;
 			int nextColor = 0;
 			while (!queue.IsEmpty) {
 				var data = queue.Pop();
 				if (data.arg.kind != Arg.Kind.Var) { continue; }
-				Log.Info($"Checking {data.arg}");
 				var name = data.arg.var;
+				// Do not assign non-locals into registers.
+				if (!locals.Contains(name)) { continue; }
+				//Log.Info($"Checking {data.arg}");
+				
 				int? assign = null;
-				Log.Info($"Trying to assign color to {{{name}}} against {data.saturation}");
+				//Log.Info($"Trying to assign color to {{{name}}} against {data.saturation}");
 				for (int i = 0; i < nextColor; i++) {
 					if (!data.saturation.Contains(i)) {
-						Log.Info($"Color {i} not yet taken");
+						//Log.Info($"Color {i} not yet taken");
 						assign = i;
 						break;
 					} else {
-						Log.Info($"Color {i} is taken, skipping...");
+						//Log.Info($"Color {i} is taken, skipping...");
 					}
 				}
 
 				if (!assign.HasValue) { 
 					assign = nextColor;
 					nextColor += 1;
-					Log.Info($"Color {assign.Value} __FIRST__ assigned to {name}");
+					//Log.Info($"Color {assign.Value} __FIRST__ assigned to {name}");
 				} else {
-					Log.Info($"Color {assign.Value} assigned to {name}");
+					//Log.Info($"Color {assign.Value} assigned to {name}");
 				}
 
 				foreach (var other in queue) {
-					Log.Info($"Looking at {{{other.arg}}}'s edges {other.edges}");
+					//Log.Info($"Looking at {{{other.arg}}}'s edges {other.edges}");
 					if (other.edges.Contains(name)) {
-						Log.Info($"Marking {{{other.arg}}} as saturated for {assign.Value}");
+						//Log.Info($"Marking {{{other.arg}}} as saturated for {assign.Value}");
 
 						other.saturation += assign.Value;
 					}
@@ -676,10 +684,16 @@ end";
 			public static void TestGraphColoring() {
 				LL<Instr> program = LL<Instr>.From(EXAMPLE_PROGRAM);
 				var graph = Interference(program);
+				var locals = Set<string>.FromList("t", "z", "y", "x", "w", "v");
 
-				var result = ColorGraph(graph);
-
-				Log.Info(result);
+				var result = ColorGraph(graph, locals);
+				result.ShouldContain(("w", 0));
+				result.ShouldContain(("z", 1));
+				result.ShouldContain(("t", 0));
+				result.ShouldContain(("y", 2));
+				result.ShouldContain(("v", 1));
+				result.ShouldContain(("x", 1));
+				
 
 			}
 		}
