@@ -54,6 +54,12 @@ namespace ni_compiler {
 					return stmt+next;
 				} 
 				case C0.Return:{
+					var kind = tail.nodes[0].type;
+					if (kind == C0.Add || kind == C0.Sub) {
+						return SelectStmt(tail.nodes[0], RAX) + Jmpq("conclusion");
+					} else if (kind == C0.Read) {
+						throw new Exception($"C0.Read is currently unsupported.");
+					}
 					// Construction of return is like Return(Atm(Int(5)))
 					return new LL<Instr>(Jmpq("conclusion")) 
 						.Add(Movq(AtmToArg(tail.nodes[0]), RAX));
@@ -97,8 +103,9 @@ namespace ni_compiler {
 			throw new Exception($"Unknown instruction {instr.kind}");
 		}
 		public static Arg AssignHomeArg(Env<Arg> env, Arg arg) {
+			var res = arg;
 			switch (arg.kind) {
-				case Arg.Kind.Var: return env[arg.var];
+				case Arg.Kind.Var: return (env.Lookup(arg.var, out res)) ? res : arg;
 				default: return arg;
 			}
 		}
@@ -136,12 +143,125 @@ namespace ni_compiler {
 		#endregion
 
 		#region PASS: Allocating Registers, Liveness Detection & Interference
-		public static void AllocateRegisters(LL<Instr> program, LL<string> locals) {
+		public static (Program, Set<string>) AllocateRegisters(Program program, LL<string> locals, LL<Arg> registers) {
+			LL<(Block block, Set<string> locals)> lives = GetLocals(program);
+			//Log.Info($"Live Detection: {lives}");
+			Set<string> stillLive = new Set<string>(locals);
+			int mainLocals = -1;
+			Set<Arg> mainRegisters = null;
 			
+			LL<Block> modifiedBlocks = lives.Map((it) => {
+				//Log.Info($"Modifying: {it.block}\nLive Set {it.locals}");
+				Graph<Arg> graph = Interference(it.block.instructions);
+				//Log.Info($"Got graph: {graph.ToString(true)}");
+				LL<(string name, int? id)> coloring = ColorGraph(graph, it.locals);
+				//Log.Info($"Got coloring: {coloring}");
+				LL<string> names = coloring.Map(it => it.name);
+
+				Env<Arg> mappings = AssignRegisters(coloring, registers);
+				stillLive -= mappings.KeySet;
+				LL<Instr> modified = AllocateRegisters(it.block.instructions, mappings);
+
+				(LL<Instr> modified2, var env, var locals) = AssignHomes(modified, names);
+				if (it.block.label == "start") {
+					mainLocals = (it.locals - mappings.KeySet).Count;
+					mainRegisters = mappings.ValueSet;
+				}
+				return new Block(modified2, it.block.label);
+			});
+
+			var prelude = Prelude(mainLocals, mainRegisters) ;
+			var conclusion = Conclusion(mainLocals, mainRegisters);
+			var fullProgram = new LL<Block>(prelude, new LL<Block>(conclusion, modifiedBlocks));
+			
+			return (new Program(fullProgram), stillLive);
+		}
+
+		public static Block Prelude(int stackLocals, Set<Arg> registers) {
+			if (stackLocals == 0) {
+				return new Block( LL<Instr>.From(
+					Pushq(RBP),
+					Movq(RSP, RBP),
+					Jmpq("start")
+				), "_main");
+			}
+			int offset = stackLocals * 8 + (stackLocals % 2 == 1 ? 8 : 0);
+			LL<Instr> instrs = LL<Instr>.From(
+				Pushq(RBP),
+				Movq(RSP, RBP),
+				Subq(offset, RSP),
+				Jmpq("start")
+			);
+			return new Block(instrs, "_main");
+		}
+
+		public static Block Conclusion(int stackLocals, Set<Arg> registers) {
+			if (stackLocals == 0) {
+				return new Block(LL<Instr>.From(
+					Popq(RBP),
+					Retq()
+				), "conclusion");
+			}
+
+			int offset = stackLocals * 8 + (stackLocals % 2 == 1 ? 8 : 0);
+			LL<Instr> instrs = LL<Instr>.From(
+				Addq(offset, RSP),
+				Popq(RBP),
+				Retq()
+			);
+			return new Block(instrs, "conclusion");
+		}
+
+		public static LL<(Block, Set<string>)> GetLocals(Program prog) {
+			return GetLocals(prog.blocks);
+		}
+		public static LL<(Block, Set<string>)> GetLocals(LL<Block> blocks) {
+			if (blocks == null) { return null; }
+			return GetLocals(blocks.next).Add((blocks.data, GetLocals(blocks.data)));
+		}
+
+		public static Set<string> GetLocals(Block block) {
+			Set<string> locals = new Set<string>();
+			foreach (var instr in block.instructions) {
+				var a = instr.arg1;
+				var b = instr.arg2;
+				if (a != null && a.kind == Arg.Kind.Var) { locals += a.var; }
+				if (b != null && b.kind == Arg.Kind.Var) { locals += b.var; }
+			}
+			return locals;
+		}
+
+		public static Env<Arg> AssignRegisters(LL<(string, int?)> coloring, LL<Arg> args) {
+			if (coloring == null) { return new Env<Arg>(); }
+			Env<Arg> res = AssignRegisters(coloring.next, args);
+			(string name, int? id) = coloring.data;
+			
+			return id.HasValue && id.Value < args.Size() 
+				? res.Extend(name, args[id.Value]) 
+				: res;
+		}
+		public static LL<Instr> AllocateRegisters(LL<Instr> block, Env<Arg> mappings) {
+			if (block == null) { return null; }
+			Instr instr = block.data;
+			Arg arg1 = instr.arg1;
+			Arg arg2 = instr.arg2;
+			string label = instr.label;
+			int arity = instr.arity;
+			if (arg1 != null && arg1.kind == Arg.Kind.Var) {
+				Arg mapped;
+				if (mappings.Lookup(arg1.var, out mapped)) { arg1 = mapped; }
+			}
+			if (arg2 != null && arg2.kind == Arg.Kind.Var) {
+				Arg mapped;
+				if (mappings.Lookup(arg2.var, out mapped)) { arg2 = mapped; }
+			}
+			return AllocateRegisters(block.next, mappings)
+				.Add(new Instr(instr.kind, arg1, arg2, label, arity));
 		}
 
 
 		public static LL<(string, int?)> ColorGraph(Graph<Arg> graph, Set<string> locals) {
+			//Log.Info($"Coloring graph {graph.ToString(true)}\nwith locals{locals}");
 			Heap<SatData> queue = new Heap<SatData>();
 			foreach (var pair in graph) {
 				var vert = pair.Key;
@@ -490,14 +610,35 @@ namespace ni_compiler {
 		public static Instr Popq(Arg a) { return new Instr(Instr.Kind.Popq, a); }
 		public static Instr Jmpq(string label) { return new Instr(Instr.Kind.Jmp, null, null, label); }
 
-		public class Block : LL<Instr> {
-			public Block(Instr data, LL<Instr> next) : base(data, next) { }
+		public class Block {
+			public LL<Instr> instructions { get; private set; }
+			public string label { get; private set; }
+			public Block(LL<Instr> instructions, string label) {
+				this.instructions = instructions;
+				this.label = label;
+			}
+			public override string ToString() {
+				StringBuilder str = new StringBuilder($"{label}:\n        ");
+				foreach (var instr in instructions) { str.Append($"\n        {instr}"); }
+				return str.ToString();
+			}
 		}
-		
-		public static string ToString(this Block b) {
-			StringBuilder str = new StringBuilder("        ");
-			foreach (var instr in b) { str.Append($"\n        {instr}"); }
-			return str.ToString();
+
+		public class Program {
+			public LL<Block> blocks { get; private set; }
+			public Program(params Block[] blocks) {
+				this.blocks = LL<Block>.From(blocks);
+			}
+			public Program(LL<Block> blocks) {
+				this.blocks = blocks;
+			}
+			public override string ToString() {
+				StringBuilder str = new StringBuilder($"\n; AREA PROGRAM");
+				foreach (var block in blocks) {
+					str.Append($"\n\n{block}");
+				}
+				return str.ToString();
+			}
 		}
 		
 		public class X86b : LL<(string label, Block block)> {
@@ -694,6 +835,125 @@ end";
 				result.ShouldContain(("v", 1));
 				result.ShouldContain(("x", 1));
 				
+
+			}
+
+			private static void TestAssignRegisters() {
+				{
+					var regs = LL<Arg>.From(RCX, RBX, RDX);
+					var vars = LL<(string, int?)>.From(("t", 0), ("u", 1), ("v", 2), ("w", 3));
+					var result = AssignRegisters(vars, regs);
+					Env<Arg> expected = new Env<Arg>()
+						.Extend("t", RCX)
+						.Extend("u", RBX)
+						.Extend("v", RDX);
+
+					result.ShouldEqual(expected);
+				}
+				{
+					var regs = LL<Arg>.From(RCX, RBX, RDX);
+					var vars = LL<(string, int?)>.From(("t", 0), ("u", 1), ("v", 2));
+					var result = AssignRegisters(vars, regs);
+					Env<Arg> expected = new Env<Arg>()
+						.Extend("t", RCX)
+						.Extend("u", RBX)
+						.Extend("v", RDX);
+
+					result.ShouldEqual(expected);
+				}
+				{
+					var regs = LL<Arg>.From(RCX, RBX, RDX);
+					var vars = LL<(string, int?)>.From(("t", 0), ("u", 1));
+					var result = AssignRegisters(vars, regs);
+					Env<Arg> expected = new Env<Arg>()
+						.Extend("t", RCX)
+						.Extend("u", RBX);
+
+					result.ShouldEqual(expected);
+				}
+				{
+					var regs = LL<Arg>.From(RCX, RBX, RDX);
+					var vars = LL<(string, int?)>.From(("t", 2), ("u", 1), ("v", 0), ("w", 3));
+					var result = AssignRegisters(vars, regs);
+					Env<Arg> expected = new Env<Arg>()
+						.Extend("t", RDX)
+						.Extend("u", RBX)
+						.Extend("v", RCX);
+
+					result.ShouldEqual(expected);
+				}
+
+			}
+
+			public static (Program, Set<string>) ToAllocateRegistersPass(LL<Arg> regs, string program) {
+				var n1 = N1Lang.ParseProgram(new N1Lang.Tokenizer(program));
+
+				n1 = N1Lang.PartialEvaluate(n1);
+				var uniqueRes = N1Lang.UniquifyFull(n1);
+				n1 = uniqueRes.tree;
+
+				var reduceResult = N1Lang.ReduceFull(n1, uniqueRes.cnt);
+				n1 = reduceResult.tree;
+				//Log.Info(n1);
+				(var c0, var locals) = N1Lang.Explicate(n1);
+				//Log.Info(c0);
+				// Log.Info($"locals are {locals}");
+				LL<Instr> instrs = SelectTail(c0);
+				// instrs = PatchInstructions(instrs);
+				Block b = new Block(instrs, "start");
+				//Log.Info(b);
+
+				return AllocateRegisters(new Program(b), locals, regs);
+			}
+			
+			public static int CountUniqueRegisters(Program prog) {
+				Set<Arg> registers = new Set<Arg>();
+				foreach (var block in prog.blocks) {
+					if (block.label == "_main" || block.label == "conclusion") { continue; }
+					foreach (var ins in block.instructions) {
+						var a = ins.arg1;
+						var b = ins.arg2;
+						if (a != null && a.kind == Arg.Kind.Reg && !a.reg.Equals(RAX)) { registers += a; }
+						if (b != null && b.kind == Arg.Kind.Reg && !b.reg.Equals(RAX)) { registers += b; }
+					}
+				}
+				return registers.Count;
+			}
+			public static int CountUniqueLocalMemory(Program prog) {
+				Set<Arg> memory = new Set<Arg>();
+				foreach (var block in prog.blocks) {
+					if (block.label == "_main" || block.label == "conclusion") { continue; }
+					foreach (var ins in block.instructions) {
+						var a = ins.arg1;
+						var b = ins.arg2;
+						if (a != null && a.kind == Arg.Kind.Mem && a.reg.Equals(RBP)) { memory += a; }
+						if (b != null && b.kind == Arg.Kind.Mem && b.reg.Equals(RBP)) { memory += b; }
+					}
+				}
+				return memory.Count;
+			}
+
+			public static void TestToAllocRegisters() {
+				string prog = @"
+let ni x is 5 in 
+	let ni y is 6 in 
+		let ni z is 7 in 
+			let ni w is 8 in 
+				x + y + z + w 
+			end 
+		end 
+	end 
+end";
+				var regs = LL<Arg>.From(RBX, RCX, RDX);
+
+				(var x86, var leftover) = ToAllocateRegistersPass(regs, prog);
+				
+				leftover.Count.ShouldBe(1);
+				
+				CountUniqueLocalMemory(x86).ShouldBe(1);
+				CountUniqueRegisters(x86).ShouldBe(3);
+				
+
 
 			}
 		}
